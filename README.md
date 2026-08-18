@@ -129,10 +129,12 @@ overlay builds collapse back into stock images.
 | [#31332][ll-31332] Backfill response.completed output from output_item.done (third-party) | Responses-API bridge stops dropping streamed output | carried (Responses-API providers) |
 | [#37287][ll-37287] Opt-in stable session id derived from conversation prefix | Reliable upstream prompt-cache hits for the ChatGPT provider | carried (no ChatGPT route in this stack) |
 | [#37276][ll-37276] Keep structured output text.format in Responses API requests | Structured output survives the ChatGPT provider transform | carried (no ChatGPT route in this stack) |
+| [#37351][ll-37351] Opt-in demotion of mid-turn system messages | Claude Code's mid-conversation system reminders stop 400ing on Qwen templates | ✅ every multi-turn session |
 
 The fork also carries a fix for `map_system_message_pt` crashing on
 content-block system messages (several equivalent PRs are already open
-upstream, so it is not filed separately) and one fork-only feature: recent
+upstream, so it is not filed separately) and one more feature, found while
+testing this repo and now under review as PR [#37351][ll-37351]: recent
 Claude Code versions send mid-conversation `system`-role reminder messages,
 which OpenAI accepts but Qwen's chat template rejects (`"System message must
 be at the beginning."`). With `LITELLM_DEMOTE_MIDTURN_SYSTEM=true` (set in the
@@ -149,6 +151,7 @@ so this stays opt-in.
 [ll-31332]: https://github.com/BerriAI/litellm/pull/31332
 [ll-37287]: https://github.com/BerriAI/litellm/pull/37287
 [ll-37276]: https://github.com/BerriAI/litellm/pull/37276
+[ll-37351]: https://github.com/BerriAI/litellm/pull/37351
 
 ## Configuration
 
