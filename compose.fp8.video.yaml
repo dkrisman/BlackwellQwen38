@@ -48,7 +48,7 @@ services:
       dockerfile_inline: |
         FROM vllm/vllm-openai:nightly-aa9903490c616dc6871e5acc62cec7bb1e5e9434
         COPY vllm/ /usr/local/lib/python3.12/dist-packages/vllm/
-        ADD https://raw.githubusercontent.com/dkrisman/transformers/3ccaebc4bc046ffa8a79f492697165f2f57a2f21/src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py /usr/local/lib/python3.12/dist-packages/transformers/models/qwen3_vl/video_processing_qwen3_vl.py
+        ADD https://raw.githubusercontent.com/dkrisman/transformers/19f87e8031433b44c0042b0ceb982fa47d0d7840/src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py /usr/local/lib/python3.12/dist-packages/transformers/models/qwen3_vl/video_processing_qwen3_vl.py
         RUN chmod 644 /usr/local/lib/python3.12/dist-packages/transformers/models/qwen3_vl/video_processing_qwen3_vl.py
     container_name: bq38-vllm
     restart: unless-stopped
