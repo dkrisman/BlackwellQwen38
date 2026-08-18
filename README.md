@@ -94,13 +94,13 @@ repo:
 
 ```yaml
 build:
-  context: https://github.com/dkrisman/vllm.git#bq38-1
+  context: https://github.com/dkrisman/vllm.git#bq38-2
   dockerfile_inline: |
     FROM vllm/vllm-openai:nightly-aa9903490c616dc6871e5acc62cec7bb1e5e9434
     COPY vllm/ /usr/local/lib/python3.12/dist-packages/vllm/
 ```
 
-The `bq38-1` tags pin fork commits whose upstream base matches the base image
+The `bq38-2` tags pin fork commits whose upstream base matches the base image
 exactly (`aa9903490` for vLLM; the fork delta is frontend Python only, so
 compiled kernels and dependencies are untouched). The LiteLLM build does the
 same against `ghcr.io/berriai/litellm:v1.98.0-rc.1` and additionally clones
@@ -112,7 +112,7 @@ The forks exist only to carry these changes until they merge — if any of them
 would help you, a review or a 👍 upstream accelerates that. Once merged, the
 overlay builds collapse back into stock images.
 
-**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-1`):
+**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-2`):
 
 | PR | What it does | Used here |
 |---|---|---|
@@ -120,7 +120,7 @@ overlay builds collapse back into stock images.
 | [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Short clips stop consuming a full-length video token budget | fork lineage (video work, not wired here) |
 | [#52759][vllm-52759] Surface TorchCodec video decode failures as client errors | Bad video inputs 400 instead of 500 | fork lineage (video work, not wired here) |
 
-**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-1`):
+**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-2`):
 
 | PR | What it does | Used here |
 |---|---|---|
@@ -131,8 +131,15 @@ overlay builds collapse back into stock images.
 | [#37276][ll-37276] Keep structured output text.format in Responses API requests | Structured output survives the ChatGPT provider transform | carried (no ChatGPT route in this stack) |
 
 The fork also carries a fix for `map_system_message_pt` crashing on
-content-block system messages; several equivalent PRs are already open
-upstream, so it is not filed separately.
+content-block system messages (several equivalent PRs are already open
+upstream, so it is not filed separately) and one fork-only feature: recent
+Claude Code versions send mid-conversation `system`-role reminder messages,
+which OpenAI accepts but Qwen's chat template rejects (`"System message must
+be at the beginning."`). With `LITELLM_DEMOTE_MIDTURN_SYSTEM=true` (set in the
+compose files), the Anthropic bridge rewrites those as user turns — the same
+place Claude Code historically put them. Upstream preserves mid-turn system
+rows deliberately (PR [#34290](https://github.com/BerriAI/litellm/pull/34290)),
+so this stays opt-in.
 
 [vllm-52739]: https://github.com/vllm-project/vllm/pull/52739
 [vllm-52754]: https://github.com/vllm-project/vllm/pull/52754
