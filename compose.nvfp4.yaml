@@ -1,0 +1,110 @@
+# BlackwellQwen38 — NVFP4 variant: unsloth/Qwen3.8-27B-NVFP4 at 1M context.
+#
+# The speed pick. Community NVFP4 quant (Unsloth Dynamic v3.0: NVFP4
+# weights+activations, FP8 lm_head, FP8-KV calibration; vLLM-only — SGLang
+# can't load the FP8 lm_head). Measured 113 tok/s mean decode with MTP k=3
+# (2.0x BF16, 1.35x FP8) on an RTX PRO 6000 Blackwell 96 GB. Requires a
+# Blackwell GPU and vLLM >= 0.25. CAVEAT: Unsloth quotes 92-97% top-1
+# accuracy retention vs BF16 — quality on long agentic sessions is not
+# validated; use FP8 as the near-lossless option. This checkpoint is
+# TEXT-ONLY in vLLM (no registered multimodal processor).
+#
+# Usage:
+#   cp .env.example .env   # then fill in paths/keys
+#   docker compose -f compose.nvfp4.yaml up -d --build
+#
+# Variants are mutually exclusive (one GPU): `docker compose -f <current> down`
+# before starting another.
+
+name: blackwellqwen38
+
+services:
+  vllm:
+    # Built from the public fork at pin tag bq38-1 — see compose.fp8.yaml
+    # and README for the overlay-build explanation and the PR list.
+    image: bq38-vllm:bq38-1
+    build:
+      context: https://github.com/dkrisman/vllm.git#bq38-1
+      dockerfile_inline: |
+        FROM vllm/vllm-openai:nightly-aa9903490c616dc6871e5acc62cec7bb1e5e9434
+        COPY vllm/ /usr/local/lib/python3.12/dist-packages/vllm/
+    container_name: bq38-vllm
+    restart: unless-stopped
+    runtime: nvidia
+    ports:
+      - "127.0.0.1:${VLLM_PORT:-8000}:8000"
+    volumes:
+      - ${HF_CACHE_DIR:?set HF_CACHE_DIR in .env}:/root/.cache/huggingface
+      - triton-cache:/root/.triton
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+    command:
+      - "--model"
+      - "unsloth/Qwen3.8-27B-NVFP4"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--tensor-parallel-size"
+      - "1"
+      - "--dtype"
+      - "bfloat16"                       # activations; NVFP4 weights auto-detected
+      - "--gpu-memory-utilization"
+      - "0.94"                           # same reasoning as FP8: buy cold-prefill
+                                         # headroom with util, KV pool has slack
+      - "--max-model-len"
+      - "1010000"                        # model card's ultra-long recipe: plain
+      - "--hf-overrides"                 # max_position_embeddings lift (native
+      - '{"text_config": {"max_position_embeddings": 1010000}}'  # 262144), NOT YaRN
+      - "--kv-cache-dtype"
+      - "fp8"
+      - "--max-num-seqs"
+      - "16"
+      - "--max-num-batched-tokens"
+      - "16384"                          # HARD ceiling on Qwen 3.8 (GDN prefill
+                                         # workspace — see compose.fp8.yaml)
+      - "--enable-prefix-caching"
+      # MTP k=3 beats the Unsloth guide's k=2 single-stream (113 vs 104 tok/s).
+      - "--speculative-config"
+      - '{"method":"mtp","num_speculative_tokens":3}'
+      - "--served-model-name"
+      - "qwen-3.8-nvfp4-27b-code-1m"
+      - "--enable-auto-tool-choice"
+      - "--tool-call-parser"
+      - "qwen3_coder"
+      - "--reasoning-parser"
+      - "qwen3"
+      - "--supported-reasoning-efforts"  # fork feature, vLLM PR #52739
+      - "low"
+      - "medium"
+      - "xhigh"
+
+  litellm:
+    image: bq38-litellm:bq38-1
+    build:
+      context: https://github.com/dkrisman/litellm.git#bq38-1
+      dockerfile_inline: |
+        FROM ghcr.io/berriai/litellm:v1.98.0-rc.1
+        COPY litellm/ /app/.venv/lib/python3.13/site-packages/litellm/
+        ADD https://github.com/dkrisman/litellm-claude-code-websearch.git#main /plugin
+    container_name: bq38-litellm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+    volumes:
+      - ./configs/litellm-nvfp4.yaml:/app/config.yaml:ro
+      - ${BRAVE_API_KEY_FILE:?set BRAVE_API_KEY_FILE in .env}:/run/secrets/brave-api-key:ro
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
+      PYTHONPATH: /plugin/src:/app
+      CLAUDE_WEBSEARCH_PROVIDERS: hosted_vllm
+      CLAUDE_WEBSEARCH_API_KEY_FILE: /run/secrets/brave-api-key
+      CLAUDE_WEBSEARCH_DAILY_LIMIT: ${WEBSEARCH_DAILY_LIMIT:-500}
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    depends_on:
+      - vllm
+
+volumes:
+  triton-cache:

@@ -1,0 +1,41 @@
+# LiteLLM proxy config — FP8 variant.
+#
+# Two routes to the same vLLM worker:
+#   - the direct model name, for OpenAI-compatible clients
+#   - a "claude-*" wildcard, so Claude Code (which sends claude-sonnet-5,
+#     claude-haiku-4-5, ...) lands here transparently via /v1/messages
+#
+# No secrets in this file: the master key comes from LITELLM_MASTER_KEY in
+# the environment (set via .env — see .env.example).
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+
+# Search provider for the WebSearch plugin (litellm-claude-code-websearch).
+# The Brave key is loaded by the plugin from CLAUDE_WEBSEARCH_API_KEY_FILE.
+search_tools:
+  - search_tool_name: brave-search
+    litellm_params:
+      search_provider: brave
+
+model_list:
+  - model_name: qwen-3.8-fp8-27b-code-1m
+    litellm_params:
+      model: hosted_vllm/qwen-3.8-fp8-27b-code-1m
+      api_base: http://vllm:8000/v1
+      api_key: dummy
+
+  - model_name: "claude-*"
+    litellm_params:
+      model: hosted_vllm/qwen-3.8-fp8-27b-code-1m
+      api_base: http://vllm:8000/v1
+      api_key: dummy
+
+litellm_settings:
+  # Strip Anthropic-specific params hosted_vllm doesn't recognize
+  # (cache_control, context_management, ...).
+  drop_params: true
+  num_retries: 0
+  request_timeout: 1200                  # 1M-context generation can run long
+  callbacks:
+    - litellm_claude_code_websearch.handler_instance

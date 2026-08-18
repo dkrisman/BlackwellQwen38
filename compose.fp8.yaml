@@ -1,0 +1,133 @@
+# BlackwellQwen38 — FP8 variant: Qwen/Qwen3.8-27B-FP8 at 1M context.
+#
+# The recommended default. Official FP8 checkpoint; decode on a dense 27B is
+# weight-bandwidth-bound, so FP8 halves the weight read: measured 84 tok/s
+# mean decode with MTP k=3 vs 56.5 on BF16 (1.48x) on an RTX PRO 6000
+# Blackwell 96 GB. KV pool ~1.7M tokens.
+#
+# Usage:
+#   cp .env.example .env   # then fill in paths/keys
+#   docker compose -f compose.fp8.yaml up -d --build
+#
+# Variants are mutually exclusive (one GPU): `docker compose -f <current> down`
+# before starting another. All three share the same two locally built images,
+# so switching variants after the first build is fast.
+
+name: blackwellqwen38
+
+services:
+  vllm:
+    # Built from the public fork at pin tag bq38-1: upstream main @ aa9903490
+    # plus the reasoning-effort remap under review as vllm-project/vllm PR
+    # #52739 (see README). The fork delta is pure Python, so the build
+    # overlays the fork's vllm/ tree onto the pinned nightly image built
+    # from the SAME upstream commit — compiled kernels and deps match exactly.
+    image: bq38-vllm:bq38-1
+    build:
+      context: https://github.com/dkrisman/vllm.git#bq38-1
+      dockerfile_inline: |
+        FROM vllm/vllm-openai:nightly-aa9903490c616dc6871e5acc62cec7bb1e5e9434
+        COPY vllm/ /usr/local/lib/python3.12/dist-packages/vllm/
+    container_name: bq38-vllm
+    restart: unless-stopped
+    runtime: nvidia
+    ports:
+      - "127.0.0.1:${VLLM_PORT:-8000}:8000"   # direct access for debugging
+    volumes:
+      - ${HF_CACHE_DIR:?set HF_CACHE_DIR in .env}:/root/.cache/huggingface
+      - triton-cache:/root/.triton
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      # Anti-fragmentation: without this, a cold ~100K-token prefill can OOM
+      # at high gpu-memory-utilization while >1 GiB sits reserved-but-
+      # unallocated. Recommended by the OOM message itself.
+      PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+    command:
+      - "--model"
+      - "Qwen/Qwen3.8-27B-FP8"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--tensor-parallel-size"
+      - "1"
+      - "--dtype"
+      - "bfloat16"                       # governs activations; FP8 weights auto-detected
+      - "--gpu-memory-utilization"
+      - "0.94"                           # NOT 0.95: vLLM boot profiling
+                                         # underestimates cold big-prefill
+                                         # activation spikes; FP8's KV slack lets
+                                         # us buy ~950 MiB headroom for ~30K KV
+                                         # tokens. BF16 cannot (KV floor).
+      - "--max-model-len"
+      - "1010000"                        # model card's ultra-long recipe: plain
+      - "--hf-overrides"                 # max_position_embeddings lift (native
+      - '{"text_config": {"max_position_embeddings": 1010000}}'  # 262144), NOT YaRN
+      - "--mm-encoder-tp-mode"
+      - "data"                           # card parity; no-op at TP 1
+      - "--kv-cache-dtype"
+      - "fp8"                            # required for a 1M-class KV pool
+      - "--max-num-seqs"
+      - "16"                             # per-seq state ~free on hybrid attention
+      - "--max-num-batched-tokens"
+      - "16384"                          # HARD ceiling on Qwen 3.8: 24576/32768
+                                         # boot fine, then the first cold ~100K
+                                         # prefill OOM-kills the engine — the
+                                         # Gated DeltaNet prefill kernel's
+                                         # workspace scales with chunk size past
+                                         # what boot profiling estimates.
+      - "--enable-prefix-caching"
+      - "--speculative-config"           # MTP heads ship in the checkpoint;
+      - '{"method":"mtp","num_speculative_tokens":3}'  # measured ~1.5x decode
+      - "--served-model-name"
+      - "qwen-3.8-fp8-27b-code-1m"
+      - "--enable-auto-tool-choice"
+      - "--tool-call-parser"
+      - "qwen3_coder"
+      - "--reasoning-parser"
+      - "qwen3"
+      # Fork feature (vllm-project/vllm PR #52739): clients sending
+      # reasoning_effort values the Qwen template rejects (high, minimal, max —
+      # Claude Code sends these) get remapped to the nearest supported level
+      # instead of a 400.
+      - "--supported-reasoning-efforts"
+      - "low"
+      - "medium"
+      - "xhigh"
+
+  litellm:
+    # Built from the public fork at pin tag bq38-1: upstream staging plus
+    # BerriAI/litellm PRs #37276, #37287, #37318 and third-party PRs #36671,
+    # #31332 (see README). Pure-Python overlay onto the nearest release
+    # image. The WebSearch plugin is cloned straight from its public repo at
+    # build time.
+    image: bq38-litellm:bq38-1
+    build:
+      context: https://github.com/dkrisman/litellm.git#bq38-1
+      dockerfile_inline: |
+        FROM ghcr.io/berriai/litellm:v1.98.0-rc.1
+        COPY litellm/ /app/.venv/lib/python3.13/site-packages/litellm/
+        ADD https://github.com/dkrisman/litellm-claude-code-websearch.git#main /plugin
+    container_name: bq38-litellm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+    volumes:
+      - ./configs/litellm-fp8.yaml:/app/config.yaml:ro
+      - ${BRAVE_API_KEY_FILE:?set BRAVE_API_KEY_FILE in .env}:/run/secrets/brave-api-key:ro
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
+      PYTHONPATH: /plugin/src:/app
+      # WebSearch plugin (github.com/dkrisman/litellm-claude-code-websearch):
+      # short-circuits Claude Code's WebSearch tool through Brave so search
+      # works against a local backend.
+      CLAUDE_WEBSEARCH_PROVIDERS: hosted_vllm
+      CLAUDE_WEBSEARCH_API_KEY_FILE: /run/secrets/brave-api-key
+      CLAUDE_WEBSEARCH_DAILY_LIMIT: ${WEBSEARCH_DAILY_LIMIT:-500}
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    depends_on:
+      - vllm
+
+volumes:
+  triton-cache:

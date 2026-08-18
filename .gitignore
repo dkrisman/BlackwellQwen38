@@ -1,0 +1,5 @@
+# Local machine config + secrets — never committed.
+.env
+*.local
+*.local.*
+secrets/

@@ -1,0 +1,111 @@
+# BlackwellQwen38 — BF16 variant: Qwen/Qwen3.8-27B (full precision) at 1M.
+#
+# The quality reference. Runs the official BF16 checkpoint exactly as the
+# model card recommends. Measured 56.5 tok/s mean decode with MTP k=3 on an
+# RTX PRO 6000 Blackwell 96 GB; KV pool ~1.05M tokens (this variant is
+# tight — see the 0.95 comment below).
+#
+# Usage:
+#   cp .env.example .env   # then fill in paths/keys
+#   docker compose -f compose.bf16.yaml up -d --build
+#
+# Variants are mutually exclusive (one GPU): `docker compose -f <current> down`
+# before starting another.
+
+name: blackwellqwen38
+
+services:
+  vllm:
+    # Built from the public fork at pin tag bq38-1 — see compose.fp8.yaml
+    # and README for the overlay-build explanation and the PR list.
+    image: bq38-vllm:bq38-1
+    build:
+      context: https://github.com/dkrisman/vllm.git#bq38-1
+      dockerfile_inline: |
+        FROM vllm/vllm-openai:nightly-aa9903490c616dc6871e5acc62cec7bb1e5e9434
+        COPY vllm/ /usr/local/lib/python3.12/dist-packages/vllm/
+    container_name: bq38-vllm
+    restart: unless-stopped
+    runtime: nvidia
+    ports:
+      - "127.0.0.1:${VLLM_PORT:-8000}:8000"
+    volumes:
+      - ${HF_CACHE_DIR:?set HF_CACHE_DIR in .env}:/root/.cache/huggingface
+      - triton-cache:/root/.triton
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+    command:
+      - "--model"
+      - "Qwen/Qwen3.8-27B"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--tensor-parallel-size"
+      - "1"
+      - "--dtype"
+      - "bfloat16"
+      - "--gpu-memory-utilization"
+      - "0.95"                           # FORCED, both directions: 0.93 fails
+                                         # boot (1M needs a 33.2 GiB KV pool),
+                                         # and plain 0.95 OOMs on cold ~100K
+                                         # prefills unless expandable_segments
+                                         # is set (env above). 96 GB card.
+      - "--max-model-len"
+      - "1010000"                        # model card's ultra-long recipe: plain
+      - "--hf-overrides"                 # max_position_embeddings lift (native
+      - '{"text_config": {"max_position_embeddings": 1010000}}'  # 262144), NOT YaRN
+      - "--mm-encoder-tp-mode"
+      - "data"
+      - "--kv-cache-dtype"
+      - "fp8"
+      - "--max-num-seqs"
+      - "12"                             # BF16 KV pool is smaller than FP8's;
+                                         # 16 shrinks it too far at 1M
+      - "--max-num-batched-tokens"
+      - "16384"                          # HARD ceiling on Qwen 3.8 (GDN prefill
+                                         # workspace — see compose.fp8.yaml)
+      - "--enable-prefix-caching"
+      - "--speculative-config"
+      - '{"method":"mtp","num_speculative_tokens":3}'
+      - "--served-model-name"
+      - "qwen-3.8-27b-code-1m"
+      - "--enable-auto-tool-choice"
+      - "--tool-call-parser"
+      - "qwen3_coder"
+      - "--reasoning-parser"
+      - "qwen3"
+      - "--supported-reasoning-efforts"  # fork feature, vLLM PR #52739
+      - "low"
+      - "medium"
+      - "xhigh"
+
+  litellm:
+    image: bq38-litellm:bq38-1
+    build:
+      context: https://github.com/dkrisman/litellm.git#bq38-1
+      dockerfile_inline: |
+        FROM ghcr.io/berriai/litellm:v1.98.0-rc.1
+        COPY litellm/ /app/.venv/lib/python3.13/site-packages/litellm/
+        ADD https://github.com/dkrisman/litellm-claude-code-websearch.git#main /plugin
+    container_name: bq38-litellm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+    volumes:
+      - ./configs/litellm-bf16.yaml:/app/config.yaml:ro
+      - ${BRAVE_API_KEY_FILE:?set BRAVE_API_KEY_FILE in .env}:/run/secrets/brave-api-key:ro
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
+      PYTHONPATH: /plugin/src:/app
+      CLAUDE_WEBSEARCH_PROVIDERS: hosted_vllm
+      CLAUDE_WEBSEARCH_API_KEY_FILE: /run/secrets/brave-api-key
+      CLAUDE_WEBSEARCH_DAILY_LIMIT: ${WEBSEARCH_DAILY_LIMIT:-500}
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    depends_on:
+      - vllm
+
+volumes:
+  triton-cache:
