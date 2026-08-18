@@ -1,0 +1,153 @@
+# BlackwellQwen38 — FP8 long-video variant: Qwen/Qwen3.8-27B-FP8 at 500K
+# context with the model card's "Long Video Understanding" recipe applied
+# entirely from serve config — no checkpoint file editing.
+#
+# The Qwen3.8 model card raises the VIDEO processor's pixel budget
+# (size.longest_edge 25,165,824 -> 469,762,048 ~= 224K video tokens) by
+# telling you to edit video_preprocessor_config.json inside the checkpoint.
+# Stock vLLM cannot express that override safely via --mm-processor-kwargs
+# (vllm-project/vllm issues #52834, #52835 — see README). This variant's
+# image carries the fixes, so the whole recipe lives in the command below:
+#   - videos_kwargs scoping   -> video budget 224K tokens, image budget stock
+#   - max_pixels_per_frame    -> short clips cost tokens proportional to
+#                                duration (90 s clip ~53K instead of ~184K);
+#                                needs the transformers-side kwarg, overlaid
+#                                from the dkrisman/transformers fork branch
+#                                qwen3vl-video-max-pixels-per-frame
+#   - oversized-item guard    -> profiling dummy larger than the processor
+#                                cache no longer kills engine boot
+#
+# max-model-len drops to 500K: profiling reserves the encoder peak for one
+# max-size (224K-token) video (~26 GiB), which breaks the 1M KV floor. Video
+# capability costs ~half the text ceiling; use compose.fp8.yaml when you
+# don't need video.
+#
+# Usage:
+#   cp .env.example .env   # set VIDEO_DIR too — file:// ingest directory
+#   docker compose -f compose.fp8.video.yaml up -d --build
+#
+# Send videos on the DIRECT vLLM port (OpenAI chat API, content type
+# video_url with a file:///videos/... URL). Base64 is a non-starter for
+# GB-scale files; LiteLLM's /v1/messages has no video content type.
+#
+# Variants are mutually exclusive (one GPU): `docker compose -f <current> down`
+# before starting another.
+
+name: blackwellqwen38
+
+services:
+  vllm:
+    # Built from the public fork at pin tag bq38-3: the bq38-2 lineage plus
+    # the four video commits (torchcodec client-error PR #52759, profiling
+    # guard, videos_kwargs scoping for issue #52834, cache guard for issue
+    # #52835). The transformers overlay is a single file, pinned by commit,
+    # whose base is byte-identical to the image's transformers 5.15.0 copy.
+    image: bq38-vllm:bq38-3
+    build:
+      context: https://github.com/dkrisman/vllm.git#bq38-3
+      dockerfile_inline: |
+        FROM vllm/vllm-openai:nightly-aa9903490c616dc6871e5acc62cec7bb1e5e9434
+        COPY vllm/ /usr/local/lib/python3.12/dist-packages/vllm/
+        ADD https://raw.githubusercontent.com/dkrisman/transformers/3ccaebc4bc046ffa8a79f492697165f2f57a2f21/src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py /usr/local/lib/python3.12/dist-packages/transformers/models/qwen3_vl/video_processing_qwen3_vl.py
+        RUN chmod 644 /usr/local/lib/python3.12/dist-packages/transformers/models/qwen3_vl/video_processing_qwen3_vl.py
+    container_name: bq38-vllm
+    restart: unless-stopped
+    runtime: nvidia
+    ports:
+      - "127.0.0.1:${VLLM_PORT:-8000}:8000"   # video requests go HERE, not litellm
+    volumes:
+      - ${HF_CACHE_DIR:?set HF_CACHE_DIR in .env}:/root/.cache/huggingface
+      - triton-cache:/root/.triton
+      - ${VIDEO_DIR:?set VIDEO_DIR in .env}:/videos:ro
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+    command:
+      - "--model"
+      - "Qwen/Qwen3.8-27B-FP8"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--tensor-parallel-size"
+      - "1"
+      - "--dtype"
+      - "bfloat16"
+      - "--gpu-memory-utilization"
+      - "0.94"
+      - "--max-model-len"
+      - "500000"                         # 1M minus the video encoder reservation
+      - "--hf-overrides"
+      - '{"text_config": {"max_position_embeddings": 500000}}'
+      - "--mm-encoder-tp-mode"
+      - "data"
+      - "--kv-cache-dtype"
+      - "fp8"
+      - "--max-num-seqs"
+      - "16"
+      - "--max-num-batched-tokens"
+      - "16384"                          # HARD ceiling on Qwen 3.8 (GDN prefill
+                                         # workspace — see compose.fp8.yaml)
+      - "--enable-prefix-caching"
+      - "--speculative-config"
+      - '{"method":"mtp","num_speculative_tokens":3}'
+      - "--served-model-name"
+      - "qwen-3.8-fp8-27b-code-1m"
+      - "--enable-auto-tool-choice"
+      - "--tool-call-parser"
+      - "qwen3_coder"
+      - "--reasoning-parser"
+      - "qwen3"
+      - "--supported-reasoning-efforts"  # fork feature, vLLM PR #52739
+      - "low"
+      - "medium"
+      - "xhigh"
+      # The entire long-video recipe, as serve config. videos_kwargs scoping
+      # is the bq38-3 fix for issue #52834 (stock vLLM either ignores this or
+      # lifts the IMAGE budget to 448K tokens too). 611669 = 469762048 / 768
+      # (budget / max_frames): the per-frame spend of a fully sampled video.
+      - "--mm-processor-kwargs"
+      - '{"videos_kwargs": {"size": {"longest_edge": 469762048, "shortest_edge": 4096}, "max_pixels_per_frame": 611669}}'
+      - "--mm-processor-cache-gb"
+      - "24"                             # a processed movie-scale item is
+                                         # 3-5 GB; the default 4 caches ~nothing
+                                         # (and pre-#52835 fix, killed boot)
+      - "--limit-mm-per-prompt"
+      - '{"image": 4, "video": 2}'       # video:2 = clip comparison
+      - "--allowed-local-media-path"
+      - "/videos"
+      - "--media-io-kwargs"              # torchcodec CPU decode; NVDEC parks
+      - '{"video": {"backend": "torchcodec"}}'  # frames in device memory and OOMs
+    networks:
+      - default
+
+  litellm:
+    # Same LiteLLM as the other variants (chat + Claude Code + WebSearch).
+    image: bq38-litellm:bq38-2
+    build:
+      context: https://github.com/dkrisman/litellm.git#bq38-2
+      dockerfile_inline: |
+        FROM ghcr.io/berriai/litellm:v1.98.0-rc.1
+        COPY litellm/ /app/.venv/lib/python3.13/site-packages/litellm/
+        ADD https://github.com/dkrisman/litellm-claude-code-websearch.git#main /plugin
+    container_name: bq38-litellm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+    volumes:
+      - ./configs/litellm-fp8.yaml:/app/config.yaml:ro
+      - ${BRAVE_API_KEY_FILE:?set BRAVE_API_KEY_FILE in .env}:/run/secrets/brave-api-key:ro
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
+      PYTHONPATH: /plugin/src:/app
+      LITELLM_DEMOTE_MIDTURN_SYSTEM: "true"
+      CLAUDE_WEBSEARCH_PROVIDERS: hosted_vllm
+      CLAUDE_WEBSEARCH_API_KEY_FILE: /run/secrets/brave-api-key
+      CLAUDE_WEBSEARCH_DAILY_LIMIT: ${WEBSEARCH_DAILY_LIMIT:-500}
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    depends_on:
+      - vllm
+
+volumes:
+  triton-cache:

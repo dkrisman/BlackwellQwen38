@@ -26,6 +26,7 @@ run FP8/NVFP4 by lowering `--max-model-len`.
 | `compose.fp8.yaml` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) | **84 tok/s** | ~1.7M tok | **Recommended.** Official quant, near-lossless, 1.48× BF16 decode |
 | `compose.bf16.yaml` | [Qwen/Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B) | 56.5 tok/s | ~1.05M tok | Quality reference, full precision |
 | `compose.nvfp4.yaml` | [unsloth/Qwen3.8-27B-NVFP4](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4) | **113 tok/s** | ~1.7M tok | Fastest (2× BF16); 92–97% accuracy retention per Unsloth, text-only |
+| `compose.fp8.video.yaml` | FP8, 500K context | 84 tok/s | ~1.7M tok | **Long-video understanding**: the Qwen model card's 224K-video-token recipe as pure serve config (see below) |
 
 All decode figures measured single-stream on the RTX PRO 6000. All three run
 1M context (model card's `max_position_embeddings` lift — native extension,
@@ -36,6 +37,29 @@ every non-obvious flag, including two hard-won ceilings: `--max-num-batched-toke
 OOM-kills the engine via the Gated DeltaNet prefill kernel's workspace) and
 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (without it, cold big
 prefills OOM on fragmentation at high memory utilization).
+
+## The long-video variant
+
+The Qwen3.8 model card's "Long Video Understanding" recipe raises the video
+processor's pixel budget from ~12K to ~224K video tokens — by telling you to
+**edit `video_preprocessor_config.json` inside the checkpoint**, which isn't
+reproducible and silently reverts on re-download. Stock vLLM can't express
+the override from serve config either: a flat `--mm-processor-kwargs size`
+leaks into the *image* budget (448K-token images, profiling grinds), and the
+HF-scoped `videos_kwargs` form is honored at processing time but ignored by
+memory profiling — both filed upstream as
+[vllm#52834](https://github.com/vllm-project/vllm/issues/52834) and
+[vllm#52835](https://github.com/vllm-project/vllm/issues/52835) (a processed
+item bigger than the processor cache kills engine boot).
+
+`compose.fp8.video.yaml` runs an image (pin tag `bq38-3`) carrying fixes for
+both, plus a one-file overlay from
+[dkrisman/transformers](https://github.com/dkrisman/transformers/tree/qwen3vl-video-max-pixels-per-frame)
+adding the `max_pixels_per_frame` video kwarg (makes short clips cost tokens
+proportional to duration: a 90 s clip ~53K instead of ~184K). The entire
+recipe becomes one serve flag; hour-scale videos ingest via `file://` URLs
+from `VIDEO_DIR` on the direct vLLM port. Measured on the same hardware:
+a 1080p feature-length film is ~225K prompt tokens, first query ~2 min.
 
 ## Quickstart
 
@@ -112,13 +136,15 @@ The forks exist only to carry these changes until they merge — if any of them
 would help you, a review or a 👍 upstream accelerates that. Once merged, the
 overlay builds collapse back into stock images.
 
-**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-2`):
+**vLLM** ([fork](https://github.com/dkrisman/vllm), tags `bq38-2` / `bq38-3`):
 
-| PR | What it does | Used here |
+| PR / issue | What it does | Used here |
 |---|---|---|
 | [#52739][vllm-52739] Map unsupported reasoning_effort to nearest supported level | Claude Code's `reasoning_effort` values stop 400ing on Qwen templates | ✅ every request with thinking |
-| [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Short clips stop consuming a full-length video token budget | fork lineage (video work, not wired here) |
-| [#52759][vllm-52759] Surface TorchCodec video decode failures as client errors | Bad video inputs 400 instead of 500 | fork lineage (video work, not wired here) |
+| [#52759][vllm-52759] Surface TorchCodec video decode failures as client errors | Bad video inputs 400 instead of 500 | ✅ video variant (`bq38-3`) |
+| [#52834][vllm-52834] (issue) Modality-scoped `mm-processor-kwargs` | `videos_kwargs` overrides work without inflating the image budget — fix on branch [`feat/mm-kwargs-modality-scoped`](https://github.com/dkrisman/vllm/commits/feat/mm-kwargs-modality-scoped) | ✅ video variant (`bq38-3`) |
+| [#52835][vllm-52835] (issue) Oversized item kills engine boot | Items bigger than the processor cache are served uncached instead of raising — fix on branch [`fix/mm-cache-skip-oversized`](https://github.com/dkrisman/vllm/commits/fix/mm-cache-skip-oversized) | ✅ video variant (`bq38-3`) |
+| [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Short clips stop consuming a full-length video token budget; per review feedback, reworked as the HF `max_pixels_per_frame` kwarg ([dkrisman/transformers](https://github.com/dkrisman/transformers/tree/qwen3vl-video-max-pixels-per-frame), upstream PR pending) | ✅ video variant (`bq38-3`) |
 
 **LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-2`):
 
@@ -144,6 +170,8 @@ rows deliberately (PR [#34290](https://github.com/BerriAI/litellm/pull/34290)),
 so this stays opt-in.
 
 [vllm-52739]: https://github.com/vllm-project/vllm/pull/52739
+[vllm-52834]: https://github.com/vllm-project/vllm/issues/52834
+[vllm-52835]: https://github.com/vllm-project/vllm/issues/52835
 [vllm-52754]: https://github.com/vllm-project/vllm/pull/52754
 [vllm-52759]: https://github.com/vllm-project/vllm/pull/52759
 [ll-37318]: https://github.com/BerriAI/litellm/pull/37318
