@@ -17,17 +17,13 @@ name: blackwellqwen38
 
 services:
   vllm:
-    # Built from the public fork at pin tag bq38-2: upstream main @ aa9903490
-    # plus the reasoning-effort remap under review as vllm-project/vllm PR
-    # #52739 (see README). The fork delta is pure Python, so the build
-    # overlays the fork's vllm/ tree onto the pinned nightly image built
-    # from the SAME upstream commit — compiled kernels and deps match exactly.
-    image: bq38-vllm:bq38-2
+    # Published by this repo's build-images workflow from the fork pin tags
+    # in docker/pins.env (see README); the build: block reproduces it
+    # locally.
+    image: ghcr.io/dkrisman/bq38-vllm:bq38-3
     build:
-      context: https://github.com/dkrisman/vllm.git#bq38-2
-      dockerfile_inline: |
-        FROM vllm/vllm-openai:nightly-aa9903490c616dc6871e5acc62cec7bb1e5e9434
-        COPY vllm/ /usr/local/lib/python3.12/dist-packages/vllm/
+      context: ./docker
+      dockerfile: vllm.Dockerfile
     container_name: bq38-vllm
     restart: unless-stopped
     runtime: nvidia
@@ -97,18 +93,13 @@ services:
       - "xhigh"
 
   litellm:
-    # Built from the public fork at pin tag bq38-2: upstream staging plus
-    # BerriAI/litellm PRs #37276, #37287, #37318 and third-party PRs #36671,
-    # #31332 (see README). Pure-Python overlay onto the nearest release
-    # image. The WebSearch plugin is cloned straight from its public repo at
-    # build time.
-    image: bq38-litellm:bq38-2
+    # Published by this repo's build-images workflow from the fork pin tags
+    # in docker/pins.env (see README); the build: block reproduces it
+    # locally.
+    image: ghcr.io/dkrisman/bq38-litellm:bq38-3
     build:
-      context: https://github.com/dkrisman/litellm.git#bq38-2
-      dockerfile_inline: |
-        FROM ghcr.io/berriai/litellm:v1.98.0-rc.1
-        COPY litellm/ /app/.venv/lib/python3.13/site-packages/litellm/
-        ADD https://github.com/dkrisman/litellm-claude-code-websearch.git#main /plugin
+      context: ./docker
+      dockerfile: litellm.Dockerfile
     container_name: bq38-litellm
     restart: unless-stopped
     ports:
@@ -118,7 +109,6 @@ services:
       - ${BRAVE_API_KEY_FILE:?set BRAVE_API_KEY_FILE in .env}:/run/secrets/brave-api-key:ro
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
-      PYTHONPATH: /plugin/src:/app
       # Claude Code sends mid-conversation system-role reminder messages;
       # Qwen's chat template rejects non-leading system rows. Fork feature
       # (see README): demote them to user rows.
