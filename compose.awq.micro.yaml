@@ -1,0 +1,124 @@
+# BlackwellQwen38 — micro variant: philbert440/Qwen3.8-27B-W4A16-AWQ at 64K
+# context, sized for a 24 GB card (RTX 3090 / 4090).
+#
+# The NVFP4 checkpoint cannot fit here: Unsloth Dynamic v3.0 keeps enough
+# layers at FP8/BF16 that its weights alone load at 21.97 GiB. This W4A16
+# AWQ quant loads at 16.68 GiB and runs through awq_marlin, which supports
+# SM80+, so it works on Ampere (3090) where NVFP4 needs Blackwell for its
+# fast path. Expect a further quality step down from NVFP4 (4-bit weights,
+# no dynamic fallback layers); FP8/BF16 remain the reference variants.
+#
+# Measured on this repo's image at a 22.8 GiB budget (0.95 x 24 GiB):
+# 16.68 GiB weights + 2.93 GiB activation peak -> 2.75 GiB KV pool =
+# 77,824 tokens, 1.19x concurrency at 65,536 context. Context is the
+# scarce resource at ~40 KiB/token (16 full-attention layers with 4 KV
+# heads x head_dim 256 at fp8, plus GDN page padding), so two features
+# are traded away by default and can be bought back with context:
+#   - MTP speculative decoding: the MTP head weighs 0.79 GiB (~20K tokens
+#     of context). To re-enable, add
+#       --speculative-config '{"method":"mtp","num_speculative_tokens":3}'
+#     and lower --max-model-len to 36864.
+#   - Vision: the checkpoint keeps the vision tower, but image support
+#     costs encoder-cache memory. To try it, raise the limits in
+#     --limit-mm-per-prompt and lower --max-model-len to taste (untested).
+# NOT measured on a real 3090: fp8 KV cache on Ampere uses different
+# attention kernels than Blackwell. If boot fails there, drop
+# "--kv-cache-dtype fp8" (auto/bf16 KV) and halve --max-model-len.
+#
+# Usage:
+#   cp .env.example .env   # then fill in paths/keys
+#   docker compose -f compose.awq.micro.yaml up -d --build
+#
+# Variants are mutually exclusive (one GPU): `docker compose -f <current> down`
+# before starting another.
+
+name: blackwellqwen38
+
+services:
+  vllm:
+    # Published by this repo's build-images workflow from the fork pin tags
+    # in docker/pins.env (see README); the build: block reproduces it
+    # locally.
+    image: ghcr.io/dkrisman/bq38-vllm:bq38-4
+    build:
+      context: ./docker
+      dockerfile: vllm.Dockerfile
+    container_name: bq38-vllm
+    restart: unless-stopped
+    runtime: nvidia
+    ports:
+      - "127.0.0.1:${VLLM_PORT:-8000}:8000"
+    volumes:
+      - ${HF_CACHE_DIR:?set HF_CACHE_DIR in .env}:/root/.cache/huggingface
+      - triton-cache:/root/.triton
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+    command:
+      - "--model"
+      - "philbert440/Qwen3.8-27B-W4A16-AWQ"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--tensor-parallel-size"
+      - "1"
+      - "--dtype"
+      - "bfloat16"                       # activations; AWQ weights auto-detected
+      - "--gpu-memory-utilization"
+      - "${GPU_MEMORY_UTILIZATION:-0.95}"  # 0.95 x 24 GiB = 22.8 GiB; lower it
+                                           # if your desktop uses >1.2 GiB VRAM
+      - "--max-model-len"
+      - "65536"
+      - "--kv-cache-dtype"
+      - "fp8"
+      - "--max-num-seqs"
+      - "4"
+      - "--max-num-batched-tokens"
+      - "2048"                           # awq_marlin's dequant workspace makes
+                                         # bigger chunks cost real memory here
+      - "--limit-mm-per-prompt"
+      - '{"image": 0, "video": 0}'       # text-only by default; see header
+      - "--enable-prefix-caching"
+      - "--served-model-name"
+      - "qwen-3.8-awq-27b-code-64k"
+      - "--enable-auto-tool-choice"
+      - "--tool-call-parser"
+      - "qwen3_coder"
+      - "--reasoning-parser"
+      - "qwen3"
+      - "--supported-reasoning-efforts"  # fork feature, vLLM PR #52739
+      - "low"
+      - "medium"
+      - "xhigh"
+
+  litellm:
+    image: ghcr.io/dkrisman/bq38-litellm:bq38-4
+    build:
+      context: ./docker
+      dockerfile: litellm.Dockerfile
+    container_name: bq38-litellm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+    volumes:
+      - ./configs/litellm-awq-micro.yaml:/app/config.yaml:ro
+      - ${BRAVE_API_KEY_FILE:?set BRAVE_API_KEY_FILE in .env}:/run/secrets/brave-api-key:ro
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
+      # Claude Code sends mid-conversation system-role reminder messages;
+      # Qwen's chat template rejects non-leading system rows. Fork feature
+      # (litellm PR #37351): "drop" removes them, which also keeps the
+      # conversation prefix stable for vLLM's prefix cache; set "true" to
+      # demote them to user rows instead.
+      LITELLM_DEMOTE_MIDTURN_SYSTEM: "drop"
+      CLAUDE_WEBSEARCH_PROVIDERS: hosted_vllm
+      CLAUDE_WEBSEARCH_API_KEY_FILE: /run/secrets/brave-api-key
+      CLAUDE_WEBSEARCH_DAILY_LIMIT: ${WEBSEARCH_DAILY_LIMIT:-500}
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    depends_on:
+      - vllm
+
+volumes:
+  triton-cache:

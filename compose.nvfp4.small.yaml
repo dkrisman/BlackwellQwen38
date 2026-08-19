@@ -1,0 +1,111 @@
+# BlackwellQwen38 — small variant: unsloth/Qwen3.8-27B-NVFP4 at 128K
+# context, sized for a 32 GB Blackwell card (RTX 5090).
+#
+# Same checkpoint as compose.nvfp4.yaml (see its header for the quant
+# caveats), with context traded down to fit the card: the Unsloth Dynamic
+# quant loads at 21.97 GiB, so at a 30.25 GiB budget (0.95 x 32 GiB) the
+# measured KV pool is 5.58 GiB = 144,584 tokens, 1.10x concurrency at
+# 131,072 context. MTP speculative decoding stays on (its head is part of
+# the 21.97 GiB); to buy ~20K more context instead, remove
+# --speculative-config and raise --max-model-len to 151552.
+# Needs FP4-capable hardware for full speed (SM120: any RTX 50 series);
+# for 24 GB Ampere/Ada cards use compose.awq.micro.yaml instead.
+#
+# Usage:
+#   cp .env.example .env   # then fill in paths/keys
+#   docker compose -f compose.nvfp4.small.yaml up -d --build
+#
+# Variants are mutually exclusive (one GPU): `docker compose -f <current> down`
+# before starting another.
+
+name: blackwellqwen38
+
+services:
+  vllm:
+    # Published by this repo's build-images workflow from the fork pin tags
+    # in docker/pins.env (see README); the build: block reproduces it
+    # locally.
+    image: ghcr.io/dkrisman/bq38-vllm:bq38-4
+    build:
+      context: ./docker
+      dockerfile: vllm.Dockerfile
+    container_name: bq38-vllm
+    restart: unless-stopped
+    runtime: nvidia
+    ports:
+      - "127.0.0.1:${VLLM_PORT:-8000}:8000"
+    volumes:
+      - ${HF_CACHE_DIR:?set HF_CACHE_DIR in .env}:/root/.cache/huggingface
+      - triton-cache:/root/.triton
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+    command:
+      - "--model"
+      - "unsloth/Qwen3.8-27B-NVFP4"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--tensor-parallel-size"
+      - "1"
+      - "--dtype"
+      - "bfloat16"                       # activations; NVFP4 weights auto-detected
+      - "--gpu-memory-utilization"
+      - "${GPU_MEMORY_UTILIZATION:-0.95}"  # 0.95 x 32 GiB = 30.4 GiB; lower it
+                                           # if your desktop uses >1.5 GiB VRAM
+      - "--max-model-len"
+      - "131072"
+      - "--kv-cache-dtype"
+      - "fp8"
+      - "--max-num-seqs"
+      - "4"
+      - "--max-num-batched-tokens"
+      - "2048"                           # same 2.29 GiB activation peak as 4096
+                                         # on this checkpoint; smaller is safer
+                                         # on a 32 GiB budget
+      - "--enable-prefix-caching"
+      - "--speculative-config"
+      - '{"method":"mtp","num_speculative_tokens":3}'
+      - "--served-model-name"
+      - "qwen-3.8-nvfp4-27b-code-128k"
+      - "--enable-auto-tool-choice"
+      - "--tool-call-parser"
+      - "qwen3_coder"
+      - "--reasoning-parser"
+      - "qwen3"
+      - "--supported-reasoning-efforts"  # fork feature, vLLM PR #52739
+      - "low"
+      - "medium"
+      - "xhigh"
+
+  litellm:
+    image: ghcr.io/dkrisman/bq38-litellm:bq38-4
+    build:
+      context: ./docker
+      dockerfile: litellm.Dockerfile
+    container_name: bq38-litellm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+    volumes:
+      - ./configs/litellm-nvfp4-small.yaml:/app/config.yaml:ro
+      - ${BRAVE_API_KEY_FILE:?set BRAVE_API_KEY_FILE in .env}:/run/secrets/brave-api-key:ro
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
+      # Claude Code sends mid-conversation system-role reminder messages;
+      # Qwen's chat template rejects non-leading system rows. Fork feature
+      # (litellm PR #37351): "drop" removes them, which also keeps the
+      # conversation prefix stable for vLLM's prefix cache; set "true" to
+      # demote them to user rows instead.
+      LITELLM_DEMOTE_MIDTURN_SYSTEM: "drop"
+      CLAUDE_WEBSEARCH_PROVIDERS: hosted_vllm
+      CLAUDE_WEBSEARCH_API_KEY_FILE: /run/secrets/brave-api-key
+      CLAUDE_WEBSEARCH_DAILY_LIMIT: ${WEBSEARCH_DAILY_LIMIT:-500}
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    depends_on:
+      - vllm
+
+volumes:
+  triton-cache:

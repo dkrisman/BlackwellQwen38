@@ -3,7 +3,8 @@
 Run **Qwen 3.8 27B at 1M context** on a single Blackwell workstation GPU, with
 **Claude Code** and its **WebSearch** tool working end to end against the local
 model — three quantization variants plus a long-video variant, one
-`docker compose` command each.
+`docker compose` command each. Sized-down tiers bring the same stack to
+32 GB (RTX 5090, 128K context) and 24 GB (RTX 3090/4090, 64K context) cards.
 
 Everything is built from public sources at pinned refs: three patched forks
 ([dkrisman/vllm](https://github.com/dkrisman/vllm),
@@ -49,19 +50,26 @@ locally from the pinned fork refs if you can't pull).
 
 Developed and measured on an **NVIDIA RTX PRO 6000 Blackwell (96 GB)**. The
 BF16 variant needs ~91 GB at 1M context; FP8 and NVFP4 fit with more headroom.
-NVFP4 additionally **requires** a Blackwell-generation GPU. Smaller cards can
-run FP8/NVFP4 by lowering `--max-model-len`.
+NVFP4 additionally **requires** a Blackwell-generation GPU. For smaller cards
+use the sized-down tiers: `compose.nvfp4.small.yaml` (32 GB Blackwell) and
+`compose.awq.micro.yaml` (24 GB, Ampere and newer) — see
+[The small-card tiers](#the-small-card-tiers).
 
 ## The variants
 
-| Variant | Checkpoint | Decode (MTP k=3) | KV pool | Notes |
-|---|---|---|---|---|
-| `compose.fp8.yaml` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) | **84 tok/s** | ~1.7M tok | **Recommended.** Official quant, near-lossless, 1.48× BF16 decode |
-| `compose.bf16.yaml` | [Qwen/Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B) | 56.5 tok/s | ~1.05M tok | Quality reference, full precision |
-| `compose.nvfp4.yaml` | [unsloth/Qwen3.8-27B-NVFP4](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4) | **113 tok/s** | ~1.7M tok | Fastest (2× BF16); 92–97% accuracy retention per Unsloth, text-only |
-| `compose.fp8.video.yaml` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) @ 500K ctx | 84 tok/s | ~1.66M tok | **Long-video understanding**: the model card's 224K-video-token recipe as pure serve config (see below) |
+| Variant | Checkpoint | Required VRAM | Context | Decode | KV pool | Notes |
+|---|---|---|---|---|---|---|
+| `compose.fp8.yaml` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) | 96 GB | 1M | **84 tok/s** | ~1.7M tok | **Recommended.** Official quant, near-lossless, 1.48× BF16 decode |
+| `compose.bf16.yaml` | [Qwen/Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B) | 96 GB | 1M | 56.5 tok/s | ~1.05M tok | Quality reference, full precision |
+| `compose.nvfp4.yaml` | [unsloth/Qwen3.8-27B-NVFP4](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4) | 96 GB | 1M | **113 tok/s** | ~1.7M tok | Fastest (2× BF16); 92–97% accuracy retention per Unsloth, text-only |
+| `compose.fp8.video.yaml` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) | 96 GB | 500K | 84 tok/s | ~1.66M tok | **Long-video understanding**: the model card's 224K-video-token recipe as pure serve config (see below) |
+| `compose.nvfp4.small.yaml` | [unsloth/Qwen3.8-27B-NVFP4](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4) | 32 GB (RTX 5090) | 128K | 105 tok/s | ~145K tok | Same NVFP4 checkpoint sized for one 32 GB Blackwell card; keeps MTP |
+| `compose.awq.micro.yaml` | [philbert440/Qwen3.8-27B-W4A16-AWQ](https://huggingface.co/philbert440/Qwen3.8-27B-W4A16-AWQ) | 24 GB (RTX 3090/4090) | 64K | 73 tok/s† | ~78K tok | W4A16 AWQ via `awq_marlin`, runs on Ampere+; text-only, no MTP |
 
-All decode figures measured single-stream on the RTX PRO 6000. The three
+All decode figures measured single-stream on the RTX PRO 6000; the 96 GB
+variants use MTP k=3. †The micro figure is the dev card running the same
+`awq_marlin` kernels a 3090 would — expect roughly half on a 3090 itself
+(half the memory bandwidth). The three
 quantization variants run 1M context (model card's `max_position_embeddings` lift — native extension,
 not YaRN), MTP speculative decoding (k=3), prefix caching, FP8 KV cache, and
 the `qwen3_coder` tool parser. The compose files carry inline comments for
@@ -70,6 +78,34 @@ every non-obvious flag, including two hard-won ceilings: `--max-num-batched-toke
 OOM-kills the engine via the Gated DeltaNet prefill kernel's workspace) and
 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (without it, cold big
 prefills OOM on fragmentation at high memory utilization).
+
+## The small-card tiers
+
+Both tiers were sized empirically on the 96 GB card by capping
+`--gpu-memory-utilization` to the target card's exact budget (0.95 × its
+VRAM), then maximizing context inside it. Context is the scarce resource:
+this model's KV costs ~40 KiB/token even at fp8 KV (16 full-attention
+layers × 4 KV heads × head_dim 256, plus GDN page padding), so one GiB of
+budget buys only ~26K tokens. The compose headers carry the measured memory
+ledgers and the buy-back trades.
+
+- **`compose.nvfp4.small.yaml` — 32 GB (RTX 5090)**: the same NVFP4
+  checkpoint at 131,072 context with MTP kept on (144,584-token KV pool,
+  1.10× concurrency). 105 tok/s measured at this config; the 5090 is the
+  same GB202 die as the dev card with near-identical bandwidth, so that
+  number should transfer.
+- **`compose.awq.micro.yaml` — 24 GB (RTX 3090/4090)**: the NVFP4
+  checkpoint cannot fit here — Unsloth Dynamic keeps enough layers at
+  FP8/BF16 that its weights alone load at 21.97 GiB — so this tier switches
+  to a W4A16 AWQ quant (16.68 GiB) on the `awq_marlin` kernels, which run
+  on SM80+ (Ampere and newer, no Blackwell requirement). 65,536 context;
+  MTP and vision are off by default, and the compose header shows how to
+  trade context to re-enable either. Not yet validated on a real Ampere
+  card: if fp8 KV cache fails to boot there, drop `--kv-cache-dtype fp8`
+  and halve `--max-model-len`.
+
+Both files expose `GPU_MEMORY_UTILIZATION` in `.env` (default 0.95) for
+desktops where the display compositor already holds a GiB.
 
 ## The long-video variant
 
@@ -85,7 +121,7 @@ memory profiling — both filed upstream as
 [vllm#52835](https://github.com/vllm-project/vllm/issues/52835) (a processed
 item bigger than the processor cache kills engine boot).
 
-`compose.fp8.video.yaml` runs an image (pin tag `bq38-3`) carrying fixes for
+`compose.fp8.video.yaml` runs an image (pin tag `bq38-4`) carrying fixes for
 both, plus a one-file overlay from
 [dkrisman/transformers](https://github.com/dkrisman/transformers/tree/qwen3vl-video-max-pixels-per-frame)
 adding the `max_pixels_per_frame` video kwarg (makes short clips cost tokens

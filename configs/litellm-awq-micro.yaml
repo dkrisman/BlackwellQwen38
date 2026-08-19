@@ -1,0 +1,30 @@
+# LiteLLM proxy config — micro (AWQ, 24 GB) variant. See litellm-fp8.yaml
+# for commentary; only the served model name differs.
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+
+search_tools:
+  - search_tool_name: brave-search
+    litellm_params:
+      search_provider: brave
+
+model_list:
+  - model_name: qwen-3.8-awq-27b-code-64k
+    litellm_params:
+      model: hosted_vllm/qwen-3.8-awq-27b-code-64k
+      api_base: http://vllm:8000/v1
+      api_key: dummy
+
+  - model_name: "claude-*"
+    litellm_params:
+      model: hosted_vllm/qwen-3.8-awq-27b-code-64k
+      api_base: http://vllm:8000/v1
+      api_key: dummy
+
+litellm_settings:
+  drop_params: true
+  num_retries: 0
+  request_timeout: 1200
+  callbacks:
+    - litellm_claude_code_websearch.handler_instance
