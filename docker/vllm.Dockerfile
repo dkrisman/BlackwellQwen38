@@ -17,9 +17,9 @@ ARG BASE_IMAGE=vllm/vllm-openai:nightly-aa9903490c616dc6871e5acc62cec7bb1e5e9434
 
 FROM busybox AS fetch
 ARG VLLM_REPO=https://github.com/dkrisman/vllm.git
-ARG VLLM_REF=bq38-3
+ARG VLLM_REF=bq38-4
 ARG TRANSFORMERS_REPO=https://github.com/dkrisman/transformers.git
-ARG TRANSFORMERS_REF=bq38-3
+ARG TRANSFORMERS_REF=bq38-4
 ADD ${VLLM_REPO}#${VLLM_REF} /vllm-src
 ADD ${TRANSFORMERS_REPO}#${TRANSFORMERS_REF} /tfs-src
 
