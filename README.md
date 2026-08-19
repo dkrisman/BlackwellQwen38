@@ -199,11 +199,13 @@ upstream, so it is not filed separately) and one more feature, found while
 testing this repo and now under review as PR [#37351][ll-37351]: recent
 Claude Code versions send mid-conversation `system`-role reminder messages,
 which OpenAI accepts but Qwen's chat template rejects (`"System message must
-be at the beginning."`). With `LITELLM_DEMOTE_MIDTURN_SYSTEM=true` (set in the
-compose files), the Anthropic bridge rewrites those as user turns — the same
-place Claude Code historically put them. Upstream preserves mid-turn system
-rows deliberately (PR [#34290](https://github.com/BerriAI/litellm/pull/34290)),
-so this stays opt-in.
+be at the beginning."`). `LITELLM_DEMOTE_MIDTURN_SYSTEM` controls the
+fix: the compose files default to `drop` (remove the reminders entirely,
+which also keeps the conversation prefix stable for vLLM's prefix cache);
+set `true` to instead rewrite them as user turns — the place Claude Code
+historically put them. Upstream preserves mid-turn system rows deliberately
+(PR [#34290](https://github.com/BerriAI/litellm/pull/34290)), so this stays
+opt-in.
 
 [vllm-52739]: https://github.com/vllm-project/vllm/pull/52739
 [tf-48071]: https://github.com/huggingface/transformers/pull/48071

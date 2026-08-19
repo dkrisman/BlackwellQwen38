@@ -37,7 +37,7 @@ services:
     # Published by this repo's build-images workflow from the fork pin tags
     # in docker/pins.env; the build: block reproduces it locally when you
     # can't pull (same Dockerfile, same pinned refs).
-    image: ghcr.io/dkrisman/bq38-vllm:bq38-3
+    image: ghcr.io/dkrisman/bq38-vllm:bq38-4
     build:
       context: ./docker
       dockerfile: vllm.Dockerfile
@@ -115,7 +115,7 @@ services:
       - "/videos"
 
   litellm:
-    image: ghcr.io/dkrisman/bq38-litellm:bq38-3
+    image: ghcr.io/dkrisman/bq38-litellm:bq38-4
     build:
       context: ./docker
       dockerfile: litellm.Dockerfile
@@ -128,10 +128,12 @@ services:
       - ${BRAVE_API_KEY_FILE:?set BRAVE_API_KEY_FILE in .env}:/run/secrets/brave-api-key:ro
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
-      # Claude Code sends mid-conversation system-role reminders; Qwen's chat
-      # template rejects non-leading system rows. Fork feature (litellm PR
-      # #37351): demote them to user rows.
-      LITELLM_DEMOTE_MIDTURN_SYSTEM: "true"
+      # Claude Code sends mid-conversation system-role reminder messages;
+      # Qwen's chat template rejects non-leading system rows. Fork feature
+      # (litellm PR #37351): "drop" removes them, which also keeps the
+      # conversation prefix stable for vLLM's prefix cache; set "true" to
+      # demote them to user rows instead.
+      LITELLM_DEMOTE_MIDTURN_SYSTEM: "drop"
       CLAUDE_WEBSEARCH_PROVIDERS: hosted_vllm
       CLAUDE_WEBSEARCH_API_KEY_FILE: /run/secrets/brave-api-key
       CLAUDE_WEBSEARCH_DAILY_LIMIT: ${WEBSEARCH_DAILY_LIMIT:-500}
