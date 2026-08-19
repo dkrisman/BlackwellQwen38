@@ -59,7 +59,7 @@ use the sized-down tiers: `compose.nvfp4.small.yaml` (32 GB Blackwell) and
 
 | Variant | Checkpoint | Required VRAM | Context | Decode | KV pool | Notes |
 |---|---|---|---|---|---|---|
-| `compose.fp8.yaml` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) | 96 GB | 1M | **84 tok/s** | ~1.7M tok | **Recommended.** Official quant, near-lossless, 1.48× BF16 decode |
+| `compose.fp8.yaml` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) | 96 GB‡ | 1M | **84 tok/s** | ~1.7M tok | **Recommended.** Official quant, near-lossless, 1.48× BF16 decode |
 | `compose.bf16.yaml` | [Qwen/Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B) | 96 GB | 1M | 56.5 tok/s | ~1.05M tok | Quality reference, full precision |
 | `compose.nvfp4.yaml` | [unsloth/Qwen3.8-27B-NVFP4](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4) | 96 GB | 1M | **113 tok/s** | ~1.7M tok | Fastest (2× BF16); 92–97% accuracy retention per Unsloth, text-only |
 | `compose.fp8.video.yaml` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) | 96 GB | 500K | 84 tok/s | ~1.66M tok | **Long-video understanding**: the model card's 224K-video-token recipe as pure serve config (see below) |
@@ -69,7 +69,10 @@ use the sized-down tiers: `compose.nvfp4.small.yaml` (32 GB Blackwell) and
 All decode figures measured single-stream on the RTX PRO 6000; the 96 GB
 variants use MTP k=3. †The micro figure is the dev card running the same
 `awq_marlin` kernels a 3090 would — expect roughly half on a 3090 itself
-(half the memory bandwidth). The three
+(half the memory bandwidth). ‡FP8's true floor at 1M context is ~70 GiB
+(~26 GiB weights + ~40.5 GiB KV + activations); the surplus on a 96 GB card
+becomes the 1.7M-token KV pool. An 80 GB H100/H200-class card should hold
+it, but that's a different architecture and untested here. The three
 quantization variants run 1M context (model card's `max_position_embeddings` lift — native extension,
 not YaRN), MTP speculative decoding (k=3), prefix caching, FP8 KV cache, and
 the `qwen3_coder` tool parser. The compose files carry inline comments for
