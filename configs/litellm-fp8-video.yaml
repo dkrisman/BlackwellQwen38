@@ -1,0 +1,32 @@
+# LiteLLM proxy config — FP8 long-video variant. See litellm-fp8.yaml for
+# commentary. Text/tool/websearch traffic goes through here as usual; VIDEO
+# requests go to the direct vLLM port instead (the /v1/messages surface has no
+# video content type — see compose.fp8-video.yaml).
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+
+search_tools:
+  - search_tool_name: brave-search
+    litellm_params:
+      search_provider: brave
+
+model_list:
+  - model_name: qwen-3.8-fp8-27b-video-500k
+    litellm_params:
+      model: hosted_vllm/qwen-3.8-fp8-27b-video-500k
+      api_base: http://vllm:8000/v1
+      api_key: dummy
+
+  - model_name: "claude-*"
+    litellm_params:
+      model: hosted_vllm/qwen-3.8-fp8-27b-video-500k
+      api_base: http://vllm:8000/v1
+      api_key: dummy
+
+litellm_settings:
+  drop_params: true
+  num_retries: 0
+  request_timeout: 1200
+  callbacks:
+    - litellm_claude_code_websearch.handler_instance

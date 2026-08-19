@@ -2,15 +2,48 @@
 
 Run **Qwen 3.8 27B at 1M context** on a single Blackwell workstation GPU, with
 **Claude Code** and its **WebSearch** tool working end to end against the local
-model — three quantization variants, one `docker compose` command each.
+model — three quantization variants plus a long-video variant, one
+`docker compose` command each.
 
-Everything is built from public sources at pinned refs: two patched forks
+Everything is built from public sources at pinned refs: three patched forks
 ([dkrisman/vllm](https://github.com/dkrisman/vllm),
-[dkrisman/litellm](https://github.com/dkrisman/litellm)) carrying changes that
-are under review upstream (see [Upstream PRs](#upstream-prs) — reviews and
-merges welcome), plus the
+[dkrisman/litellm](https://github.com/dkrisman/litellm),
+[dkrisman/transformers](https://github.com/dkrisman/transformers)) carrying
+changes that are under review upstream (see
+[Upstream PRs and issues](#upstream-prs-and-issues) — reviews and merges
+welcome), plus the
 [litellm-claude-code-websearch](https://github.com/dkrisman/litellm-claude-code-websearch)
-plugin. No monkeypatches, no mounted patch files.
+plugin. No monkeypatches, no mounted patch files, no checkpoint edits.
+Prebuilt images are published to ghcr by this repo's own CI (see
+[How the images are built](#how-the-images-are-built)).
+
+## Quickstart
+
+```bash
+git clone https://github.com/dkrisman/BlackwellQwen38.git && cd BlackwellQwen38
+cp .env.example .env    # set HF cache dir, Brave API key file, master key
+docker compose -f compose.fp8.yaml up -d --build
+```
+
+First boot downloads the checkpoint (~28 GB for FP8) and takes a few minutes
+of engine init/compile; watch with `docker logs -f bq38-vllm` until
+`Application startup complete`. Then:
+
+```bash
+./scripts/smoke-test.sh     # model list, chat, claude-* route, websearch
+./scripts/claude-code.sh    # launch Claude Code against the local model
+```
+
+Switching variants (one GPU — they are mutually exclusive):
+
+```bash
+docker compose -f compose.fp8.yaml down
+docker compose -f compose.nvfp4.yaml up -d --build
+```
+
+All variants share the same two images, published to ghcr by this repo's CI
+(compose pulls them; `docker compose -f <variant> build` reproduces them
+locally from the pinned fork refs if you can't pull).
 
 ## Hardware
 
@@ -19,17 +52,17 @@ BF16 variant needs ~91 GB at 1M context; FP8 and NVFP4 fit with more headroom.
 NVFP4 additionally **requires** a Blackwell-generation GPU. Smaller cards can
 run FP8/NVFP4 by lowering `--max-model-len`.
 
-## The three variants
+## The variants
 
 | Variant | Checkpoint | Decode (MTP k=3) | KV pool | Notes |
 |---|---|---|---|---|
 | `compose.fp8.yaml` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) | **84 tok/s** | ~1.7M tok | **Recommended.** Official quant, near-lossless, 1.48× BF16 decode |
 | `compose.bf16.yaml` | [Qwen/Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B) | 56.5 tok/s | ~1.05M tok | Quality reference, full precision |
 | `compose.nvfp4.yaml` | [unsloth/Qwen3.8-27B-NVFP4](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4) | **113 tok/s** | ~1.7M tok | Fastest (2× BF16); 92–97% accuracy retention per Unsloth, text-only |
-| `compose.fp8.video.yaml` | FP8, 500K context | 84 tok/s | ~1.7M tok | **Long-video understanding**: the Qwen model card's 224K-video-token recipe as pure serve config (see below) |
+| `compose.fp8.video.yaml` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) @ 500K ctx | 84 tok/s | ~1.66M tok | **Long-video understanding**: the model card's 224K-video-token recipe as pure serve config (see below) |
 
-All decode figures measured single-stream on the RTX PRO 6000. All three run
-1M context (model card's `max_position_embeddings` lift — native extension,
+All decode figures measured single-stream on the RTX PRO 6000. The three
+quantization variants run 1M context (model card's `max_position_embeddings` lift — native extension,
 not YaRN), MTP speculative decoding (k=3), prefix caching, FP8 KV cache, and
 the `qwen3_coder` tool parser. The compose files carry inline comments for
 every non-obvious flag, including two hard-won ceilings: `--max-num-batched-tokens`
@@ -57,36 +90,29 @@ both, plus a one-file overlay from
 [dkrisman/transformers](https://github.com/dkrisman/transformers/tree/qwen3vl-video-max-pixels-per-frame)
 adding the `max_pixels_per_frame` video kwarg (makes short clips cost tokens
 proportional to duration: a 90 s clip ~53K instead of ~184K). The entire
-recipe becomes one serve flag; hour-scale videos ingest via `file://` URLs
-from `VIDEO_DIR` on the direct vLLM port. Measured on the same hardware:
-a 1080p feature-length film is ~225K prompt tokens, first query ~2 min.
+recipe becomes one serve flag:
 
-## Quickstart
-
-```bash
-git clone https://github.com/dkrisman/BlackwellQwen38.git && cd BlackwellQwen38
-cp .env.example .env    # set HF cache dir, Brave API key file, master key
-docker compose -f compose.fp8.yaml up -d --build
+```
+--mm-processor-kwargs '{"videos_kwargs": {"size": {"longest_edge": 469762048,
+  "shortest_edge": 4096}, "max_pixels_per_frame": 611669}}'
 ```
 
-First boot downloads the checkpoint (~28 GB for FP8) and takes a few minutes
-of engine init/compile; watch with `docker logs -f bq38-vllm` until
-`Application startup complete`. Then:
+Hour-scale videos ingest via `file://` URLs from the `VIDEO_DIR` mount on the
+**direct vLLM port** (the Anthropic API surface has no video content type):
 
 ```bash
-./scripts/smoke-test.sh     # model list, chat, claude-* route, websearch
-./scripts/claude-code.sh    # launch Claude Code against the local model
+curl -sS http://127.0.0.1:8000/v1/chat/completions -H "Content-Type: application/json" -d '{
+  "model": "qwen-3.8-fp8-27b-video-500k", "max_tokens": 300,
+  "messages": [{"role": "user", "content": [
+    {"type": "video_url", "video_url": {"url": "file:///videos/clip.mp4"}},
+    {"type": "text", "text": "Describe what happens in this clip."}]}]}'
 ```
 
-Switching variants (one GPU — they are mutually exclusive):
-
-```bash
-docker compose -f compose.fp8.yaml down
-docker compose -f compose.nvfp4.yaml up -d --build
-```
-
-The two locally built images are shared across variants, so switching after
-the first build is fast.
+Context is 500K rather than 1M on this variant: vLLM reserves peak encoder
+memory for one max-size video (~26 GiB), which the 1M KV floor cannot spare.
+Audio tracks are discarded (Qwen 3.8 is vision-only). Measured on the same
+hardware: a 1080p feature-length film is ~225K prompt tokens, first query
+~2 min.
 
 ## How Claude Code works against this stack
 
@@ -112,41 +138,51 @@ the first build is fast.
 
 ## How the images are built
 
-Both images are **pure-Python overlays onto pinned official images**, built by
-compose directly from the public forks — reproducible from nothing but this
-repo:
+This repo's [build-images workflow](.github/workflows/build-images.yml)
+publishes both images to ghcr on every change to
+[`docker/pins.env`](docker/pins.env):
 
-```yaml
-build:
-  context: https://github.com/dkrisman/vllm.git#bq38-2
-  dockerfile_inline: |
-    FROM vllm/vllm-openai:nightly-aa9903490c616dc6871e5acc62cec7bb1e5e9434
-    COPY vllm/ /usr/local/lib/python3.12/dist-packages/vllm/
-```
+- `ghcr.io/dkrisman/bq38-vllm:<pin>` — a pinned official vLLM nightly with the
+  fork's Python tree and the transformers Qwen3-VL patch overlaid
+  ([`docker/vllm.Dockerfile`](docker/vllm.Dockerfile)). No kernel
+  compilation: the fork deltas are frontend Python only. When a future pin's
+  upstream base has no published nightly image, the Dockerfile can instead
+  swap in that commit's wheel from vLLM's per-commit wheel index
+  (`wheels.vllm.ai`).
+- `ghcr.io/dkrisman/bq38-litellm:<pin>` — the LiteLLM fork overlaid on the
+  nearest release image with the WebSearch plugin baked in
+  ([`docker/litellm.Dockerfile`](docker/litellm.Dockerfile)).
 
-The `bq38-2` tags pin fork commits whose upstream base matches the base image
-exactly (`aa9903490` for vLLM; the fork delta is frontend Python only, so
-compiled kernels and dependencies are untouched). The LiteLLM build does the
-same against `ghcr.io/berriai/litellm:v1.98.0-rc.1` and additionally clones
-the WebSearch plugin into the image.
+Both Dockerfiles end in baked smoke tests (compiled extension present, fork
+features importable, transformers kwarg applied). The compose files reference
+the ghcr images and carry equivalent `build:` blocks, so
+`docker compose -f <variant> build` reproduces the exact images locally from
+nothing but this repo. The `bq38-N` tags on the forks are immutable pins; the
+current pin set lives in `docker/pins.env`.
 
-## Upstream PRs
+## Upstream PRs and issues
 
 The forks exist only to carry these changes until they merge — if any of them
 would help you, a review or a 👍 upstream accelerates that. Once merged, the
 overlay builds collapse back into stock images.
 
-**vLLM** ([fork](https://github.com/dkrisman/vllm), tags `bq38-2` / `bq38-3`):
+**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-3`):
 
 | PR / issue | What it does | Used here |
 |---|---|---|
 | [#52739][vllm-52739] Map unsupported reasoning_effort to nearest supported level | Claude Code's `reasoning_effort` values stop 400ing on Qwen templates | ✅ every request with thinking |
-| [#52759][vllm-52759] Surface TorchCodec video decode failures as client errors | Bad video inputs 400 instead of 500 | ✅ video variant (`bq38-3`) |
-| [#52834][vllm-52834] (issue) Modality-scoped `mm-processor-kwargs` | `videos_kwargs` overrides work without inflating the image budget — fix on branch [`feat/mm-kwargs-modality-scoped`](https://github.com/dkrisman/vllm/commits/feat/mm-kwargs-modality-scoped) | ✅ video variant (`bq38-3`) |
-| [#52835][vllm-52835] (issue) Oversized item kills engine boot | Items bigger than the processor cache are served uncached instead of raising — fix on branch [`fix/mm-cache-skip-oversized`](https://github.com/dkrisman/vllm/commits/fix/mm-cache-skip-oversized) | ✅ video variant (`bq38-3`) |
-| [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Short clips stop consuming a full-length video token budget; per review feedback, reworked as the HF `max_pixels_per_frame` kwarg ([dkrisman/transformers](https://github.com/dkrisman/transformers/tree/qwen3vl-video-max-pixels-per-frame), upstream PR pending) | ✅ video variant (`bq38-3`) |
+| [#52759][vllm-52759] Surface TorchCodec video decode failures as client errors | Bad video inputs 400 instead of 500 | ✅ `fp8.video` variant |
+| [#52834][vllm-52834] (issue) Modality-scoped `mm-processor-kwargs` | `videos_kwargs` overrides work without inflating the image budget — fix on branch [`feat/mm-kwargs-modality-scoped`](https://github.com/dkrisman/vllm/commits/feat/mm-kwargs-modality-scoped) | ✅ `fp8.video` variant |
+| [#52835][vllm-52835] (issue) Oversized item kills engine boot | Items bigger than the processor cache are served uncached instead of raising — fix on branch [`fix/mm-cache-skip-oversized`](https://github.com/dkrisman/vllm/commits/fix/mm-cache-skip-oversized) | ✅ `fp8.video` variant |
+| [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Short clips stop consuming a full-length video token budget; per review feedback, reworked as the HF `max_pixels_per_frame` kwarg (now transformers PR [#48071][tf-48071]) | ✅ `fp8.video` variant |
 
-**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-2`):
+**transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-3`):
+
+| PR | What it does | Used here |
+|---|---|---|
+| [#48071][tf-48071] Add `max_pixels_per_frame` to the Qwen3-VL video processor | Video token cost scales with clip duration instead of every clip filling the whole budget | ✅ `fp8.video` variant |
+
+**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-3`):
 
 | PR | What it does | Used here |
 |---|---|---|
@@ -170,6 +206,9 @@ rows deliberately (PR [#34290](https://github.com/BerriAI/litellm/pull/34290)),
 so this stays opt-in.
 
 [vllm-52739]: https://github.com/vllm-project/vllm/pull/52739
+[tf-48071]: https://github.com/huggingface/transformers/pull/48071
+[vllm-i52834]: https://github.com/vllm-project/vllm/issues/52834
+[vllm-i52835]: https://github.com/vllm-project/vllm/issues/52835
 [vllm-52834]: https://github.com/vllm-project/vllm/issues/52834
 [vllm-52835]: https://github.com/vllm-project/vllm/issues/52835
 [vllm-52754]: https://github.com/vllm-project/vllm/pull/52754
