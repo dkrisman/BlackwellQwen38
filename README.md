@@ -57,14 +57,14 @@ use the sized-down tiers: `compose.nvfp4.small.yaml` (32 GB Blackwell) and
 
 ## The variants
 
-| Variant | Checkpoint | Min VRAM | Context | Decode | KV pool* | Notes |
-|---|---|---|---|---|---|---|
-| `compose.fp8.yaml` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) | ~70 GB‡ | 1M | **84 tok/s** | ~1.7M tok | **Recommended.** Official quant, near-lossless, 1.48× BF16 decode |
-| `compose.bf16.yaml` | [Qwen/Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B) | 96 GB | 1M | 56.5 tok/s | ~1.05M tok | Quality reference, full precision |
-| `compose.nvfp4.yaml` | [unsloth/Qwen3.8-27B-NVFP4](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4) | ~65 GB‡ | 1M | **113 tok/s** | ~1.7M tok | Fastest (2× BF16); 92–97% accuracy retention per Unsloth, text-only |
-| `compose.fp8.video.yaml` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) | 96 GB | 500K | 84 tok/s | ~1.66M tok | **Long-video understanding**: the model card's 224K-video-token recipe as pure serve config (see below) |
-| `compose.nvfp4.small.yaml` | [unsloth/Qwen3.8-27B-NVFP4](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4) | 32 GB (RTX 5090) | 128K | 105 tok/s | ~145K tok | Same NVFP4 checkpoint sized for one 32 GB Blackwell card; keeps MTP |
-| `compose.awq.micro.yaml` | [philbert440/Qwen3.8-27B-W4A16-AWQ](https://huggingface.co/philbert440/Qwen3.8-27B-W4A16-AWQ) | 24 GB (RTX 3090/4090) | 64K | 73 tok/s† | ~78K tok | W4A16 AWQ via `awq_marlin`, runs on Ampere+; text-only, no MTP |
+| Variant | Min VRAM | Context | Decode | KV pool* | Notes |
+|---|---|---|---|---|---|
+| `compose.fp8.yaml` | ~70 GB‡ | 1M | **84 tok/s** | ~1.7M tok | **Recommended.** [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8): official quant, near-lossless, 1.48× BF16 decode |
+| `compose.bf16.yaml` | 96 GB | 1M | 56.5 tok/s | ~1.05M tok | [Qwen/Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B): quality reference, full precision |
+| `compose.nvfp4.yaml` | ~65 GB‡ | 1M | **113 tok/s** | ~1.7M tok | [unsloth/Qwen3.8-27B-NVFP4](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4): fastest (2× BF16); 92–97% accuracy retention per Unsloth, text-only |
+| `compose.fp8.video.yaml` | 96 GB | 500K | 84 tok/s | ~1.66M tok | **Long-video understanding**: same FP8 checkpoint, the model card's 224K-video-token recipe as pure serve config (see below) |
+| `compose.nvfp4.small.yaml` | 32 GB (RTX 5090) | 128K | 105 tok/s | ~145K tok | Same NVFP4 checkpoint sized for one 32 GB Blackwell card; keeps MTP |
+| `compose.awq.micro.yaml` | 24 GB (RTX 3090/4090) | 64K | 73 tok/s† | ~78K tok | [philbert440/Qwen3.8-27B-W4A16-AWQ](https://huggingface.co/philbert440/Qwen3.8-27B-W4A16-AWQ) via `awq_marlin`, runs on Ampere+; text-only, no MTP |
 
 All decode figures measured single-stream on the RTX PRO 6000; the 96 GB
 variants use MTP k=3.
