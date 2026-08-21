@@ -57,28 +57,42 @@ use the sized-down tiers: `compose.nvfp4.small.yaml` (32 GB Blackwell) and
 
 ## The variants
 
-| Variant | Checkpoint | Required VRAM | Context | Decode | KV pool | Notes |
+| Variant | Checkpoint | Min VRAM | Context | Decode | KV pool* | Notes |
 |---|---|---|---|---|---|---|
-| `compose.fp8.yaml` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) | 96 GB‡ | 1M | **84 tok/s** | ~1.7M tok | **Recommended.** Official quant, near-lossless, 1.48× BF16 decode |
+| `compose.fp8.yaml` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) | ~70 GB‡ | 1M | **84 tok/s** | ~1.7M tok | **Recommended.** Official quant, near-lossless, 1.48× BF16 decode |
 | `compose.bf16.yaml` | [Qwen/Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B) | 96 GB | 1M | 56.5 tok/s | ~1.05M tok | Quality reference, full precision |
-| `compose.nvfp4.yaml` | [unsloth/Qwen3.8-27B-NVFP4](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4) | 96 GB | 1M | **113 tok/s** | ~1.7M tok | Fastest (2× BF16); 92–97% accuracy retention per Unsloth, text-only |
+| `compose.nvfp4.yaml` | [unsloth/Qwen3.8-27B-NVFP4](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4) | ~65 GB‡ | 1M | **113 tok/s** | ~1.7M tok | Fastest (2× BF16); 92–97% accuracy retention per Unsloth, text-only |
 | `compose.fp8.video.yaml` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) | 96 GB | 500K | 84 tok/s | ~1.66M tok | **Long-video understanding**: the model card's 224K-video-token recipe as pure serve config (see below) |
 | `compose.nvfp4.small.yaml` | [unsloth/Qwen3.8-27B-NVFP4](https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4) | 32 GB (RTX 5090) | 128K | 105 tok/s | ~145K tok | Same NVFP4 checkpoint sized for one 32 GB Blackwell card; keeps MTP |
 | `compose.awq.micro.yaml` | [philbert440/Qwen3.8-27B-W4A16-AWQ](https://huggingface.co/philbert440/Qwen3.8-27B-W4A16-AWQ) | 24 GB (RTX 3090/4090) | 64K | 73 tok/s† | ~78K tok | W4A16 AWQ via `awq_marlin`, runs on Ampere+; text-only, no MTP |
 
 All decode figures measured single-stream on the RTX PRO 6000; the 96 GB
-variants use MTP k=3. †The micro figure is the dev card running the same
-`awq_marlin` kernels a 3090 would — expect roughly half on a 3090 itself
-(half the memory bandwidth). ‡FP8's true floor at 1M context is ~70 GiB
-(~26 GiB weights + ~40.5 GiB KV + activations); the surplus on a 96 GB card
-becomes the 1.7M-token KV pool. An 80 GB H100/H200-class card should hold
-it, but that's a different architecture and untested here. The three
-quantization variants run 1M context (model card's `max_position_embeddings` lift — native extension,
-not YaRN), MTP speculative decoding (k=3), prefix caching, FP8 KV cache, and
-the `qwen3_coder` tool parser. The compose files carry inline comments for
-every non-obvious flag, including two hard-won ceilings: `--max-num-batched-tokens`
-16384 (larger chunk sizes boot fine, then the first cold ~100K prefill
-OOM-kills the engine via the Gated DeltaNet prefill kernel's workspace) and
+variants use MTP k=3.
+
+†The micro figure is the dev card running the same `awq_marlin` kernels a
+3090 would; expect roughly half on a 3090 itself (half the memory
+bandwidth).
+
+\*KV pool as measured at each variant's shipped budget: the 96 GB card for
+the four full variants (everything above the Min-VRAM floor becomes pool),
+the 32 GB / 24 GB target-card budgets for small/micro.
+
+‡Computed 1M-context floors, not validated cards: weights + non-torch +
+activation + ~39 GiB KV (1,010,000 tokens × 40.5 KiB/token measured at fp8
+KV). FP8: ~27 + ~2.4 + 39 ≈ 70 GB. NVFP4: 22.6 + 2.4 + 39 ≈ 65 GB (weights
+and activation measured at small-tier chunking; the shipped 16384-token
+chunks need some extra activation headroom). Only the 96 GB card is
+validated; an 80 GB H100/H200-class card should hold either, but that's a
+different architecture and untested here.
+
+The three quantization variants run 1M context (the model card's
+`max_position_embeddings` lift, a native extension rather than YaRN), MTP
+speculative decoding (k=3), prefix caching, FP8 KV cache, and the
+`qwen3_coder` tool parser. The compose files carry inline comments for
+every non-obvious flag, including two hard-won ceilings:
+`--max-num-batched-tokens` 16384 (larger chunk sizes boot fine, then the
+first cold ~100K prefill OOM-kills the engine via the Gated DeltaNet
+prefill kernel's workspace) and
 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (without it, cold big
 prefills OOM on fragmentation at high memory utilization).
 
