@@ -100,8 +100,9 @@ services:
       #   size.longest_edge 469762048 = the card's 224K-video-token budget
       #   cap_pixels_per_frame = the qwen-vl-utils per-frame ceiling (768
       #     patches, PR #48071's boolean form) — short clips cost
-      #     proportional to duration instead of budget-filling; fully
-      #     sampled videos land on budget/768 per frame, unaffected
+      #     proportional to duration instead of budget-filling (a 90 s clip:
+      #     ~66K tokens vs ~184K uncapped); fully sampled videos land on
+      #     budget/768 per frame, unaffected
       - "--mm-processor-kwargs"
       - '{"videos_kwargs": {"size": {"longest_edge": 469762048, "shortest_edge": 4096}, "cap_pixels_per_frame": true}}'
       - "--limit-mm-per-prompt"

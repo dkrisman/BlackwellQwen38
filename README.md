@@ -144,8 +144,8 @@ both, plus a one-file overlay from
 adding the `cap_pixels_per_frame` video kwarg — the boolean per-frame cap
 matching qwen-vl-utils that transformers PR [#48071][tf-48071] settled on —
 which makes short clips cost tokens proportional to duration instead of
-budget-filling (a 90 s clip cost ~184K uncapped). The entire recipe becomes
-one serve flag:
+budget-filling (a 90 s clip: ~66K tokens vs ~184K uncapped; fully sampled
+videos are unaffected). The entire recipe becomes one serve flag:
 
 ```
 --mm-processor-kwargs '{"videos_kwargs": {"size": {"longest_edge": 469762048,
