@@ -219,13 +219,13 @@ overlay builds collapse back into stock images.
 | [#52759][vllm-52759] Surface TorchCodec video decode failures as client errors | Bad video inputs 400 instead of 500 | ✅ `fp8.video` variant |
 | [#52834][vllm-52834] (issue) Modality-scoped `mm-processor-kwargs` | `videos_kwargs` overrides work without inflating the image budget — fix on branch [`feat/mm-kwargs-modality-scoped`](https://github.com/dkrisman/vllm/commits/feat/mm-kwargs-modality-scoped) | ✅ `fp8.video` variant |
 | [#52835][vllm-52835] (issue) Oversized item kills engine boot | Items bigger than the processor cache are served uncached instead of raising — fix on branch [`fix/mm-cache-skip-oversized`](https://github.com/dkrisman/vllm/commits/fix/mm-cache-skip-oversized) | ✅ `fp8.video` variant |
-| [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Short clips stop consuming a full-length video token budget; per review feedback, reworked as the HF `max_pixels_per_frame` kwarg (now transformers PR [#48071][tf-48071]) | ✅ `fp8.video` variant |
+| [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Closed as superseded: per review the knob belongs in the HF processor, now transformers PR [#48071][tf-48071] | ✅ `fp8.video` variant |
 
 **transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-3`):
 
 | PR | What it does | Used here |
 |---|---|---|
-| [#48071][tf-48071] Add `max_pixels_per_frame` to the Qwen3-VL video processor | Video token cost scales with clip duration instead of every clip filling the whole budget | ✅ `fp8.video` variant |
+| [#48071][tf-48071] Opt-in per-frame pixel cap for the Qwen3-VL video processor | Video token cost scales with clip duration instead of every clip filling the whole budget; upstream now a boolean `cap_pixels_per_frame` applying the qwen-vl-utils formula (the pinned image still carries the numeric `max_pixels_per_frame` form) | ✅ `fp8.video` variant |
 
 **LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-3`):
 
