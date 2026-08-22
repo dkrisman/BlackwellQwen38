@@ -138,16 +138,18 @@ memory profiling — both filed upstream as
 [vllm#52835](https://github.com/vllm-project/vllm/issues/52835) (a processed
 item bigger than the processor cache kills engine boot).
 
-`compose.fp8.video.yaml` runs an image (pin tag `bq38-4`) carrying fixes for
+`compose.fp8.video.yaml` runs an image (pin tag `bq38-5`) carrying fixes for
 both, plus a one-file overlay from
 [dkrisman/transformers](https://github.com/dkrisman/transformers/tree/qwen3vl-video-max-pixels-per-frame)
-adding the `max_pixels_per_frame` video kwarg (makes short clips cost tokens
-proportional to duration: a 90 s clip ~53K instead of ~184K). The entire
-recipe becomes one serve flag:
+adding the `cap_pixels_per_frame` video kwarg — the boolean per-frame cap
+matching qwen-vl-utils that transformers PR [#48071][tf-48071] settled on —
+which makes short clips cost tokens proportional to duration instead of
+budget-filling (a 90 s clip cost ~184K uncapped). The entire recipe becomes
+one serve flag:
 
 ```
 --mm-processor-kwargs '{"videos_kwargs": {"size": {"longest_edge": 469762048,
-  "shortest_edge": 4096}, "max_pixels_per_frame": 611669}}'
+  "shortest_edge": 4096}, "cap_pixels_per_frame": true}}'
 ```
 
 Hour-scale videos ingest via `file://` URLs from the `VIDEO_DIR` mount on the
@@ -219,7 +221,7 @@ The forks exist only to carry these changes until they merge — if any of them
 would help you, a review or a 👍 upstream accelerates that. Once merged, the
 overlay builds collapse back into stock images.
 
-**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-3`):
+**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-5`):
 
 | PR / issue | What it does | Used here |
 |---|---|---|
@@ -229,13 +231,13 @@ overlay builds collapse back into stock images.
 | [#52835][vllm-52835] (issue) Oversized item kills engine boot | Items bigger than the processor cache are served uncached instead of raising — fix on branch [`fix/mm-cache-skip-oversized`](https://github.com/dkrisman/vllm/commits/fix/mm-cache-skip-oversized) | ✅ `fp8.video` variant |
 | [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Closed as superseded: per review the knob belongs in the HF processor, now transformers PR [#48071][tf-48071] | ✅ `fp8.video` variant |
 
-**transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-3`):
+**transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-5`):
 
 | PR | What it does | Used here |
 |---|---|---|
-| [#48071][tf-48071] Opt-in per-frame pixel cap for the Qwen3-VL video processor | Video token cost scales with clip duration instead of every clip filling the whole budget; upstream now a boolean `cap_pixels_per_frame` applying the qwen-vl-utils formula (the pinned image still carries the numeric `max_pixels_per_frame` form) | ✅ `fp8.video` variant |
+| [#48071][tf-48071] Opt-in per-frame pixel cap for the Qwen3-VL video processor | Video token cost scales with clip duration instead of every clip filling the whole budget; a boolean `cap_pixels_per_frame` applying the qwen-vl-utils formula | ✅ `fp8.video` variant |
 
-**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-3`):
+**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-5`):
 
 | PR | What it does | Used here |
 |---|---|---|

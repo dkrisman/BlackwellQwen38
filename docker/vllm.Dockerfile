@@ -48,6 +48,6 @@ from vllm.model_executor.models.qwen3_vl import _resolve_modality_mm_kwargs
 from transformers.models.qwen3_vl.video_processing_qwen3_vl import (
     Qwen3VLVideoProcessorInitKwargs,
 )
-assert "max_pixels_per_frame" in Qwen3VLVideoProcessorInitKwargs.__annotations__
+assert "cap_pixels_per_frame" in Qwen3VLVideoProcessorInitKwargs.__annotations__
 print("smoke OK")
 EOF
