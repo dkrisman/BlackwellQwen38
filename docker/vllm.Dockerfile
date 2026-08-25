@@ -7,24 +7,25 @@
 #
 # Two ways to match the fork's upstream base to the binary bits:
 #   - BASE_IMAGE is a nightly built from the fork's upstream merge-base
-#     (leave VLLM_WHEEL_SHA empty), or
-#   - no such nightly exists: pick any recent nightly as BASE_IMAGE and set
-#     VLLM_WHEEL_SHA to the merge-base commit — vLLM publishes a per-commit
-#     wheel index at wheels.vllm.ai for every main commit, and that wheel
-#     replaces the image's vllm before the overlay.
+#     (leave VLLM_WHEEL_SHA empty) — but Docker Hub prunes nightly tags after
+#     a few days, so this only works until the tag disappears, or
+#   - the durable form: a release image as BASE_IMAGE with VLLM_WHEEL_SHA set
+#     to the merge-base commit — vLLM publishes a per-commit wheel index at
+#     wheels.vllm.ai for every main commit, and that wheel replaces the
+#     image's vllm before the overlay.
 
-ARG BASE_IMAGE=vllm/vllm-openai:nightly-aa9903490c616dc6871e5acc62cec7bb1e5e9434
+ARG BASE_IMAGE=vllm/vllm-openai:v0.27.1
 
 FROM busybox AS fetch
 ARG VLLM_REPO=https://github.com/dkrisman/vllm.git
-ARG VLLM_REF=bq38-4
+ARG VLLM_REF=bq38-5
 ARG TRANSFORMERS_REPO=https://github.com/dkrisman/transformers.git
-ARG TRANSFORMERS_REF=bq38-4
+ARG TRANSFORMERS_REF=bq38-5
 ADD ${VLLM_REPO}#${VLLM_REF} /vllm-src
 ADD ${TRANSFORMERS_REPO}#${TRANSFORMERS_REF} /tfs-src
 
 FROM ${BASE_IMAGE}
-ARG VLLM_WHEEL_SHA=
+ARG VLLM_WHEEL_SHA=aa9903490c616dc6871e5acc62cec7bb1e5e9434
 RUN if [ -n "${VLLM_WHEEL_SHA}" ]; then \
       python3 -m pip install --no-cache-dir --no-deps --force-reinstall \
         --index-url "https://wheels.vllm.ai/${VLLM_WHEEL_SHA}/cu130/" vllm; \

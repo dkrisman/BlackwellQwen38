@@ -197,13 +197,14 @@ This repo's [build-images workflow](.github/workflows/build-images.yml)
 publishes both images to ghcr on every change to
 [`docker/pins.env`](docker/pins.env):
 
-- `ghcr.io/dkrisman/bq38-vllm:<pin>` — a pinned official vLLM nightly with the
-  fork's Python tree and the transformers Qwen3-VL patch overlaid
+- `ghcr.io/dkrisman/bq38-vllm:<pin>` — a pinned official vLLM release image
+  with the fork's upstream merge-base swapped in from vLLM's per-commit wheel
+  index (`wheels.vllm.ai`), then the fork's Python tree and the transformers
+  Qwen3-VL patch overlaid
   ([`docker/vllm.Dockerfile`](docker/vllm.Dockerfile)). No kernel
-  compilation: the fork deltas are frontend Python only. When a future pin's
-  upstream base has no published nightly image, the Dockerfile can instead
-  swap in that commit's wheel from vLLM's per-commit wheel index
-  (`wheels.vllm.ai`).
+  compilation: the fork deltas are frontend Python only. (Docker Hub prunes
+  nightly image tags after a few days, so pinning a nightly base directly is
+  not reproducible; the release-image-plus-wheel form is.)
 - `ghcr.io/dkrisman/bq38-litellm:<pin>` — the LiteLLM fork overlaid on the
   nearest release image with the WebSearch plugin baked in
   ([`docker/litellm.Dockerfile`](docker/litellm.Dockerfile)).
