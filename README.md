@@ -230,13 +230,14 @@ overlay builds collapse back into stock images.
 | [#52759][vllm-52759] Surface TorchCodec video decode failures as client errors | Bad video inputs 400 instead of 500 | ✅ `fp8.video` variant |
 | [#52834][vllm-52834] (issue) Modality-scoped `mm-processor-kwargs` | `videos_kwargs` overrides work without inflating the image budget — fix on branch [`feat/mm-kwargs-modality-scoped`](https://github.com/dkrisman/vllm/commits/feat/mm-kwargs-modality-scoped) | ✅ `fp8.video` variant |
 | [#52835][vllm-52835] (issue) Oversized item kills engine boot | Items bigger than the processor cache are served uncached instead of raising — fix on branch [`fix/mm-cache-skip-oversized`](https://github.com/dkrisman/vllm/commits/fix/mm-cache-skip-oversized) | ✅ `fp8.video` variant |
-| [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Closed as superseded: per review the knob belongs in the HF processor, now transformers PR [#48071][tf-48071] | ✅ `fp8.video` variant |
+| [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Closed as superseded: per review the knob belongs in the HF processor, now **merged** as transformers [#48071][tf-48071] | superseded |
+| [#54380][vllm-54380] Honor `cap_pixels_per_frame` in Qwen3-VL memory profiling | Profiling stops underestimating the largest video when the merged transformers cap is enabled (upstreams the fork's profiling guard) | ✅ `fp8.video` variant |
 
 **transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-6`):
 
 | PR | What it does | Used here |
 |---|---|---|
-| [#48071][tf-48071] Opt-in per-frame pixel cap for the Qwen3-VL video processor | Video token cost scales with clip duration instead of every clip filling the whole budget; a boolean `cap_pixels_per_frame` applying the qwen-vl-utils formula | ✅ `fp8.video` variant |
+| [#48071][tf-48071] Opt-in per-frame pixel cap for the Qwen3-VL video processor | **Merged** (2026-08-26). Video token cost scales with clip duration instead of every clip filling the whole budget; a boolean `cap_pixels_per_frame` applying the qwen-vl-utils formula | ✅ `fp8.video` variant |
 
 **LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-6`):
 
@@ -271,6 +272,7 @@ opt-in.
 [vllm-52834]: https://github.com/vllm-project/vllm/issues/52834
 [vllm-52835]: https://github.com/vllm-project/vllm/issues/52835
 [vllm-52754]: https://github.com/vllm-project/vllm/pull/52754
+[vllm-54380]: https://github.com/vllm-project/vllm/pull/54380
 [vllm-52759]: https://github.com/vllm-project/vllm/pull/52759
 [ll-37318]: https://github.com/BerriAI/litellm/pull/37318
 [ll-36671]: https://github.com/BerriAI/litellm/pull/36671
