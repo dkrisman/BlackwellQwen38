@@ -7,7 +7,7 @@ ARG BASE_IMAGE=ghcr.io/berriai/litellm:v1.98.0-rc.1
 
 FROM busybox AS fetch
 ARG LITELLM_REPO=https://github.com/dkrisman/litellm.git
-ARG LITELLM_REF=bq38-4
+ARG LITELLM_REF=bq38-6
 ARG PLUGIN_REPO=https://github.com/dkrisman/litellm-claude-code-websearch.git
 ARG PLUGIN_REF=main
 ADD ${LITELLM_REPO}#${LITELLM_REF} /litellm-src

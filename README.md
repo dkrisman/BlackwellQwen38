@@ -138,7 +138,7 @@ memory profiling — both filed upstream as
 [vllm#52835](https://github.com/vllm-project/vllm/issues/52835) (a processed
 item bigger than the processor cache kills engine boot).
 
-`compose.fp8.video.yaml` runs an image (pin tag `bq38-5`) carrying fixes for
+`compose.fp8.video.yaml` runs an image (pin tag `bq38-6`) carrying fixes for
 both, plus a one-file overlay from
 [dkrisman/transformers](https://github.com/dkrisman/transformers/tree/qwen3vl-video-max-pixels-per-frame)
 adding the `cap_pixels_per_frame` video kwarg — the boolean per-frame cap
@@ -222,7 +222,7 @@ The forks exist only to carry these changes until they merge — if any of them
 would help you, a review or a 👍 upstream accelerates that. Once merged, the
 overlay builds collapse back into stock images.
 
-**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-5`):
+**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-6`):
 
 | PR / issue | What it does | Used here |
 |---|---|---|
@@ -232,13 +232,13 @@ overlay builds collapse back into stock images.
 | [#52835][vllm-52835] (issue) Oversized item kills engine boot | Items bigger than the processor cache are served uncached instead of raising — fix on branch [`fix/mm-cache-skip-oversized`](https://github.com/dkrisman/vllm/commits/fix/mm-cache-skip-oversized) | ✅ `fp8.video` variant |
 | [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Closed as superseded: per review the knob belongs in the HF processor, now transformers PR [#48071][tf-48071] | ✅ `fp8.video` variant |
 
-**transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-5`):
+**transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-6`):
 
 | PR | What it does | Used here |
 |---|---|---|
 | [#48071][tf-48071] Opt-in per-frame pixel cap for the Qwen3-VL video processor | Video token cost scales with clip duration instead of every clip filling the whole budget; a boolean `cap_pixels_per_frame` applying the qwen-vl-utils formula | ✅ `fp8.video` variant |
 
-**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-5`):
+**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-6`):
 
 | PR | What it does | Used here |
 |---|---|---|
@@ -248,6 +248,7 @@ overlay builds collapse back into stock images.
 | [#37287][ll-37287] Opt-in stable session id derived from conversation prefix | Reliable upstream prompt-cache hits for the ChatGPT provider | carried (no ChatGPT route in this stack) |
 | [#37276][ll-37276] Keep structured output text.format in Responses API requests | Structured output survives the ChatGPT provider transform | carried (no ChatGPT route in this stack) |
 | [#37351][ll-37351] Opt-in demotion of mid-turn system messages | Claude Code's mid-conversation system reminders stop 400ing on Qwen templates | ✅ every multi-turn session |
+| [#38810][ll-38810] Report client-requested model in streaming message_start | Streaming responses show the requested `claude-*` alias instead of the internal served-model name | ✅ every streaming request |
 
 The fork also carries a fix for `map_system_message_pt` crashing on
 content-block system messages (several equivalent PRs are already open
@@ -277,6 +278,7 @@ opt-in.
 [ll-37287]: https://github.com/BerriAI/litellm/pull/37287
 [ll-37276]: https://github.com/BerriAI/litellm/pull/37276
 [ll-37351]: https://github.com/BerriAI/litellm/pull/37351
+[ll-38810]: https://github.com/BerriAI/litellm/pull/38810
 
 ## Configuration
 
