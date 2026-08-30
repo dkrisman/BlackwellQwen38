@@ -20,7 +20,7 @@ services:
     # Published by this repo's build-images workflow from the fork pin tags
     # in docker/pins.env (see README); the build: block reproduces it
     # locally.
-    image: ghcr.io/dkrisman/bq38-vllm:bq38-7
+    image: ghcr.io/dkrisman/bq38-vllm:bq38-8
     build:
       context: ./docker
       dockerfile: vllm.Dockerfile
@@ -96,7 +96,7 @@ services:
     # Published by this repo's build-images workflow from the fork pin tags
     # in docker/pins.env (see README); the build: block reproduces it
     # locally.
-    image: ghcr.io/dkrisman/bq38-litellm:bq38-7
+    image: ghcr.io/dkrisman/bq38-litellm:bq38-8
     build:
       context: ./docker
       dockerfile: litellm.Dockerfile

@@ -5,10 +5,13 @@
 # The card's recipe raises the VIDEO pixel budget to 469,762,048 (~224K video
 # tokens for hour-scale frame sampling) and officially requires editing
 # video_preprocessor_config.json inside the checkpoint. Here it is a plain
-# --mm-processor-kwargs flag instead — no checkpoint edits — via three patches
-# carried in the bq38 images (see README): transformers PR #48071
-# (cap_pixels_per_frame), the fork's modality-scoped kwargs resolution
-# (vllm issue #52834), and the oversized-cache-item fix (vllm issue #52835).
+# --mm-processor-kwargs flag instead — no checkpoint edits. Most of the chain
+# is now UPSTREAM: transformers #48071 (cap_pixels_per_frame, merged), vllm
+# #54380 (profiling honors the cap, merged), and the oversized-cache-item
+# guard (issue #52835, fixed upstream as cache_if_fits). The bq38 image still
+# carries one fork delta for this variant: modality-scoped kwargs resolution
+# (vllm issue #52834), so the video-scoped size override stays out of the
+# image budget.
 #
 # Differences from compose.fp8.yaml:
 #   - images pulled from ghcr (or built locally via docker/*.Dockerfile —
@@ -37,7 +40,7 @@ services:
     # Published by this repo's build-images workflow from the fork pin tags
     # in docker/pins.env; the build: block reproduces it locally when you
     # can't pull (same Dockerfile, same pinned refs).
-    image: ghcr.io/dkrisman/bq38-vllm:bq38-7
+    image: ghcr.io/dkrisman/bq38-vllm:bq38-8
     build:
       context: ./docker
       dockerfile: vllm.Dockerfile
@@ -117,7 +120,7 @@ services:
       - "/videos"
 
   litellm:
-    image: ghcr.io/dkrisman/bq38-litellm:bq38-7
+    image: ghcr.io/dkrisman/bq38-litellm:bq38-8
     build:
       context: ./docker
       dockerfile: litellm.Dockerfile

@@ -18,14 +18,14 @@ ARG BASE_IMAGE=vllm/vllm-openai:v0.27.1
 
 FROM busybox AS fetch
 ARG VLLM_REPO=https://github.com/dkrisman/vllm.git
-ARG VLLM_REF=bq38-7
+ARG VLLM_REF=bq38-8
 ARG TRANSFORMERS_REPO=https://github.com/dkrisman/transformers.git
-ARG TRANSFORMERS_REF=bq38-7
+ARG TRANSFORMERS_REF=bq38-8
 ADD ${VLLM_REPO}#${VLLM_REF} /vllm-src
 ADD ${TRANSFORMERS_REPO}#${TRANSFORMERS_REF} /tfs-src
 
 FROM ${BASE_IMAGE}
-ARG VLLM_WHEEL_SHA=aa9903490c616dc6871e5acc62cec7bb1e5e9434
+ARG VLLM_WHEEL_SHA=5e71a11eb2b595ede15ecc39c7dddca38e03deb5
 RUN if [ -n "${VLLM_WHEEL_SHA}" ]; then \
       python3 -m pip install --no-cache-dir --no-deps --force-reinstall \
         --index-url "https://wheels.vllm.ai/${VLLM_WHEEL_SHA}/cu130/" vllm; \
@@ -43,12 +43,15 @@ import vllm
 print("vllm", vllm.__version__)
 assert list(pathlib.Path(vllm.__file__).parent.glob("_C*.abi3.so")), "compiled ext missing"
 import vllm._custom_ops
-from vllm.multimodal.cache import MultiModalCache
-assert hasattr(MultiModalCache, "put_if_fits")
+from vllm.multimodal.cache import BaseMultiModalCache
+assert hasattr(BaseMultiModalCache, "cache_if_fits")
 from vllm.model_executor.models.qwen3_vl import _resolve_modality_mm_kwargs
+from vllm.entrypoints.openai.reasoning_effort import validate_supported_reasoning_efforts
 from transformers.models.qwen3_vl.video_processing_qwen3_vl import (
+    Qwen3VLVideoProcessor,
     Qwen3VLVideoProcessorInitKwargs,
 )
 assert "cap_pixels_per_frame" in Qwen3VLVideoProcessorInitKwargs.__annotations__
+assert Qwen3VLVideoProcessor.max_video_tokens == 768
 print("smoke OK")
 EOF
