@@ -231,7 +231,7 @@ overlay builds collapse back into stock images.
 | [#52834][vllm-52834] (issue) Modality-scoped `mm-processor-kwargs` | `videos_kwargs` overrides work without inflating the image budget — fix on branch [`feat/mm-kwargs-modality-scoped`](https://github.com/dkrisman/vllm/commits/feat/mm-kwargs-modality-scoped) | ✅ `fp8.video` variant |
 | [#52835][vllm-52835] (issue) Oversized item kills engine boot | Items bigger than the processor cache are served uncached instead of raising — fix on branch [`fix/mm-cache-skip-oversized`](https://github.com/dkrisman/vllm/commits/fix/mm-cache-skip-oversized) | ✅ `fp8.video` variant |
 | [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Closed as superseded: per review the knob belongs in the HF processor, now **merged** as transformers [#48071][tf-48071] | superseded |
-| [#54380][vllm-54380] Honor `cap_pixels_per_frame` in Qwen3-VL memory profiling | Profiling stops underestimating the largest video when the merged transformers cap is enabled (upstreams the fork's profiling guard) | ✅ `fp8.video` variant |
+| [#54380][vllm-54380] Honor `cap_pixels_per_frame` in Qwen3-VL memory profiling | **Merged** (2026-08-30). Profiling stops underestimating the largest video when the transformers cap is enabled; the fork's profiling guard collapses into stock vLLM at the next pin | ✅ `fp8.video` variant |
 
 **transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-7`):
 
