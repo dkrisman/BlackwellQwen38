@@ -3,11 +3,11 @@
 # Pure-Python overlay of the dkrisman/litellm fork onto the nearest official
 # release image, with the litellm-claude-code-websearch plugin baked in.
 
-ARG BASE_IMAGE=ghcr.io/berriai/litellm:v1.98.0-rc.1
+ARG BASE_IMAGE=ghcr.io/berriai/litellm:v1.102.0-rc.1
 
 FROM busybox AS fetch
 ARG LITELLM_REPO=https://github.com/dkrisman/litellm.git
-ARG LITELLM_REF=bq38-8
+ARG LITELLM_REF=bq38-9
 ARG PLUGIN_REPO=https://github.com/dkrisman/litellm-claude-code-websearch.git
 ARG PLUGIN_REF=main
 ADD ${LITELLM_REPO}#${LITELLM_REF} /litellm-src

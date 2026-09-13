@@ -141,7 +141,7 @@ is fixed upstream. One fork delta remains: stock vLLM still resolves only
 flat `--mm-processor-kwargs`, and a flat `size` leaks into the *image*
 budget (448K-token images, profiling grinds) — filed as
 [vllm#52834](https://github.com/vllm-project/vllm/issues/52834), fix carried
-in the bq38 image (pin tag `bq38-8`), which also pins the merged transformers
+in the bq38 image (pin tag `bq38-9`), which also pins the merged transformers
 processor as an overlay until the base image's transformers catches up. The
 entire recipe becomes one serve flag:
 
@@ -186,7 +186,7 @@ hardware: a 1080p feature-length film is ~225K prompt tokens, first query
   requests through the Brave Search API and returns the native
   `server_tool_use` → `web_search_tool_result` block sequence, so "Did 1
   search" and result links render exactly as they do against real Anthropic.
-  Streaming those blocks relies on LiteLLM PR [#37318][ll-37318], carried in
+  Streaming those blocks relies on LiteLLM PR [#40967][ll-40967], carried in
   the fork.
 
 ## How the images are built
@@ -220,7 +220,7 @@ The forks exist only to carry these changes until they merge — if any of them
 would help you, a review or a 👍 upstream accelerates that. Once merged, the
 overlay builds collapse back into stock images.
 
-**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-8`):
+**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-9`):
 
 | PR / issue | What it does | Used here |
 |---|---|---|
@@ -231,27 +231,27 @@ overlay builds collapse back into stock images.
 | [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Closed as superseded: per review the knob belongs in the HF processor, now **merged** as transformers [#48071][tf-48071] | superseded |
 | [#54380][vllm-54380] Honor `cap_pixels_per_frame` in Qwen3-VL memory profiling | **Merged** (2026-08-30). Profiling stops underestimating the largest video when the transformers cap is enabled; stock in the `bq38-8` base, fork guard dropped | ✅ `fp8.video` variant |
 
-**transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-8` — the tag now points at the upstream merge commit; the transformers fork carries zero delta):
+**transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-9` — the tag now points at the upstream merge commit; the transformers fork carries zero delta):
 
 | PR | What it does | Used here |
 |---|---|---|
 | [#48071][tf-48071] Opt-in per-frame pixel cap for the Qwen3-VL video processor | **Merged** (2026-08-26). Video token cost scales with clip duration instead of every clip filling the whole budget; a boolean `cap_pixels_per_frame` applying the qwen-vl-utils formula | ✅ `fp8.video` variant |
 
-**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-8`):
+**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-9`):
 
 | PR | What it does | Used here |
 |---|---|---|
-| [#37318][ll-37318] Stream native server-tool blocks to clients | WebSearch results stream as real `server_tool_use`/`web_search_tool_result` blocks | ✅ every WebSearch call |
+| [#40967][ll-40967] Stream native server-tool blocks to clients | WebSearch results stream as real `server_tool_use`/`web_search_tool_result` blocks | ✅ every WebSearch call |
 | [#31332][ll-31332] Backfill response.completed output from output_item.done (third-party) | Responses-API bridge stops dropping streamed output | carried (Responses-API providers) |
-| [#37287][ll-37287] Opt-in stable session id derived from conversation prefix | Reliable upstream prompt-cache hits for the ChatGPT provider | carried (no ChatGPT route in this stack) |
-| [#37276][ll-37276] Keep structured output text.format in Responses API requests | Structured output survives the ChatGPT provider transform | carried (no ChatGPT route in this stack) |
-| [#37351][ll-37351] Opt-in demotion of mid-turn system messages | Claude Code's mid-conversation system reminders stop 400ing on Qwen templates | ✅ every multi-turn session |
-| [#38810][ll-38810] Report client-requested model in streaming message_start | Streaming responses show the requested `claude-*` alias instead of the internal served-model name | ✅ every streaming request |
+| [#40966][ll-40966] Opt-in stable session id derived from conversation prefix | Reliable upstream prompt-cache hits for the ChatGPT provider | carried (no ChatGPT route in this stack) |
+| [#40965][ll-40965] Keep structured output text.format in Responses API requests | Structured output survives the ChatGPT provider transform | carried (no ChatGPT route in this stack) |
+| [#40969][ll-40969] Opt-in demotion of mid-turn system messages | Claude Code's mid-conversation system reminders stop 400ing on Qwen templates | ✅ every multi-turn session |
+| [#40968][ll-40968] Report client-requested model in streaming message_start | Streaming responses show the requested `claude-*` alias instead of the internal served-model name | ✅ every streaming request |
 
 The fork also carries a fix for `map_system_message_pt` crashing on
 content-block system messages (several equivalent PRs are already open
 upstream, so it is not filed separately) and one more feature, found while
-testing this repo and now under review as PR [#37351][ll-37351]: recent
+testing this repo and now under review as PR [#40969][ll-40969]: recent
 Claude Code versions send mid-conversation `system`-role reminder messages,
 which OpenAI accepts but Qwen's chat template rejects (`"System message must
 be at the beginning."`). `LITELLM_DEMOTE_MIDTURN_SYSTEM` controls the
@@ -271,12 +271,12 @@ opt-in.
 [vllm-52754]: https://github.com/vllm-project/vllm/pull/52754
 [vllm-54380]: https://github.com/vllm-project/vllm/pull/54380
 [vllm-52759]: https://github.com/vllm-project/vllm/pull/52759
-[ll-37318]: https://github.com/BerriAI/litellm/pull/37318
+[ll-40967]: https://github.com/BerriAI/litellm/pull/40967
 [ll-31332]: https://github.com/BerriAI/litellm/pull/31332
-[ll-37287]: https://github.com/BerriAI/litellm/pull/37287
-[ll-37276]: https://github.com/BerriAI/litellm/pull/37276
-[ll-37351]: https://github.com/BerriAI/litellm/pull/37351
-[ll-38810]: https://github.com/BerriAI/litellm/pull/38810
+[ll-40966]: https://github.com/BerriAI/litellm/pull/40966
+[ll-40965]: https://github.com/BerriAI/litellm/pull/40965
+[ll-40969]: https://github.com/BerriAI/litellm/pull/40969
+[ll-40968]: https://github.com/BerriAI/litellm/pull/40968
 
 ## Configuration
 
