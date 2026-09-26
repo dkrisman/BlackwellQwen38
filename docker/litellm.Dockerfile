@@ -3,11 +3,11 @@
 # Pure-Python overlay of the dkrisman/litellm fork onto the nearest official
 # release image, with the litellm-claude-code-websearch plugin baked in.
 
-ARG BASE_IMAGE=ghcr.io/berriai/litellm:v1.102.0-rc.1
+ARG BASE_IMAGE=ghcr.io/berriai/litellm:v1.104.0-dev.2
 
 FROM busybox AS fetch
 ARG LITELLM_REPO=https://github.com/dkrisman/litellm.git
-ARG LITELLM_REF=bq38-10
+ARG LITELLM_REF=bq38-11
 ARG PLUGIN_REPO=https://github.com/dkrisman/litellm-claude-code-websearch.git
 ARG PLUGIN_REF=main
 ADD ${LITELLM_REPO}#${LITELLM_REF} /litellm-src
@@ -20,10 +20,11 @@ ENV PYTHONPATH=/plugin/src:/app
 
 # Smoke test: fork feature present, plugin importable.
 RUN /app/.venv/bin/python - <<'EOF'
-from litellm.llms.anthropic.experimental_pass_through.adapters.transformation import (
-    LiteLLMAnthropicMessagesAdapter,
+from litellm.litellm_core_utils.prompt_templates.mid_conversation_system import (
+    drops_mid_conversation_system,
 )
-assert hasattr(LiteLLMAnthropicMessagesAdapter, "_demote_midturn_system_messages")
+from litellm.llms.hosted_vllm.chat.transformation import HostedVLLMChatConfig
+assert callable(drops_mid_conversation_system)
 import litellm_claude_code_websearch as m
 print("smoke OK:", type(m.handler_instance).__name__)
 EOF

@@ -39,7 +39,7 @@ services:
     # Published by this repo's build-images workflow from the fork pin tags
     # in docker/pins.env (see README); the build: block reproduces it
     # locally.
-    image: ghcr.io/dkrisman/bq38-vllm:bq38-10
+    image: ghcr.io/dkrisman/bq38-vllm:bq38-11
     build:
       context: ./docker
       dockerfile: vllm.Dockerfile
@@ -94,7 +94,7 @@ services:
       - "xhigh"
 
   litellm:
-    image: ghcr.io/dkrisman/bq38-litellm:bq38-10
+    image: ghcr.io/dkrisman/bq38-litellm:bq38-11
     build:
       context: ./docker
       dockerfile: litellm.Dockerfile
@@ -108,11 +108,13 @@ services:
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
       # Claude Code sends mid-conversation system-role reminder messages;
-      # Qwen's chat template rejects non-leading system rows. Fork feature
-      # (litellm PR #37351): "drop" removes them, which also keeps the
-      # conversation prefix stable for vLLM's prefix cache; set "true" to
-      # demote them to user rows instead.
-      LITELLM_DEMOTE_MIDTURN_SYSTEM: "drop"
+      # Qwen's chat template rejects non-leading system rows. Upstream litellm
+      # now converts them to user turns (operator note) on the /v1/messages
+      # bridge; the fork feature (litellm PR #40969) removes them instead,
+      # which also keeps the conversation prefix stable for vLLM's prefix
+      # cache, and covers the OpenAI /v1/chat/completions path. Unset it to
+      # get upstream's conversion.
+      LITELLM_DROP_MIDTURN_SYSTEM: "true"
       CLAUDE_WEBSEARCH_PROVIDERS: hosted_vllm
       CLAUDE_WEBSEARCH_API_KEY_FILE: /run/secrets/brave-api-key
       CLAUDE_WEBSEARCH_DAILY_LIMIT: ${WEBSEARCH_DAILY_LIMIT:-500}

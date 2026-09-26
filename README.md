@@ -141,7 +141,7 @@ is fixed upstream. One fork delta remains: stock vLLM still resolves only
 flat `--mm-processor-kwargs`, and a flat `size` leaks into the *image*
 budget (448K-token images, profiling grinds) — filed as
 [vllm#52834](https://github.com/vllm-project/vllm/issues/52834), fix carried
-in the bq38 image (pin tag `bq38-10`), which also pins the merged transformers
+in the bq38 image (pin tag `bq38-11`), which also pins the merged transformers
 processor as an overlay until the base image's transformers catches up. The
 entire recipe becomes one serve flag:
 
@@ -220,7 +220,7 @@ The forks exist only to carry these changes until they merge — if any of them
 would help you, a review or a 👍 upstream accelerates that. Once merged, the
 overlay builds collapse back into stock images.
 
-**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-10`, same commit as `bq38-9`):
+**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-11`, same commit as `bq38-9`):
 
 | PR / issue | What it does | Used here |
 |---|---|---|
@@ -231,13 +231,13 @@ overlay builds collapse back into stock images.
 | [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Closed as superseded: per review the knob belongs in the HF processor, now **merged** as transformers [#48071][tf-48071] | superseded |
 | [#54380][vllm-54380] Honor `cap_pixels_per_frame` in Qwen3-VL memory profiling | **Merged** (2026-08-30). Profiling stops underestimating the largest video when the transformers cap is enabled; stock in the `bq38-8` base, fork guard dropped | ✅ `fp8.video` variant |
 
-**transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-10`, same commit as `bq38-9` — the tag now points at the upstream merge commit; the transformers fork carries zero delta):
+**transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-11`, same commit as `bq38-9` — the tag now points at the upstream merge commit; the transformers fork carries zero delta):
 
 | PR | What it does | Used here |
 |---|---|---|
 | [#48071][tf-48071] Opt-in per-frame pixel cap for the Qwen3-VL video processor | **Merged** (2026-08-26). Video token cost scales with clip duration instead of every clip filling the whole budget; a boolean `cap_pixels_per_frame` applying the qwen-vl-utils formula | ✅ `fp8.video` variant |
 
-**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-10`):
+**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-11`):
 
 | PR | What it does | Used here |
 |---|---|---|
@@ -245,7 +245,7 @@ overlay builds collapse back into stock images.
 | [#31332][ll-31332] Backfill response.completed output from output_item.done (third-party) | Responses-API bridge stops dropping streamed output | carried (Responses-API providers) |
 | [#40966][ll-40966] Opt-in stable session id derived from conversation prefix | Reliable upstream prompt-cache hits for the ChatGPT provider | carried (no ChatGPT route in this stack) |
 | [#40965][ll-40965] Keep structured output text.format in Responses API requests | Structured output survives the ChatGPT provider transform | carried (no ChatGPT route in this stack) |
-| [#40969][ll-40969] Opt-in demotion of mid-turn system messages | Claude Code's mid-conversation system reminders stop 400ing on Qwen templates | ✅ every multi-turn session |
+| [#40969][ll-40969] Opt-in removal of mid-turn system messages | Claude Code's mid-conversation system reminders are dropped instead of delivered as user turns; also fixes the 400 on the OpenAI chat path | ✅ every multi-turn session |
 | [#40968][ll-40968] Report client-requested model in streaming message_start | Streaming responses show the requested `claude-*` alias instead of the internal served-model name | ✅ every streaming request |
 | (branch `litellm_transcription_optional_token_details`, not filed: duplicates upstream [#33766][ll-33766]) Transcription token usage without `input_token_details` | `/v1/audio/transcriptions` against llama-server (llama.cpp) parses and cost-tracks instead of 500ing | carried (no audio route in this stack; used by the llama.cpp Gemma modes) |
 
@@ -255,13 +255,13 @@ upstream, so it is not filed separately) and one more feature, found while
 testing this repo and now under review as PR [#40969][ll-40969]: recent
 Claude Code versions send mid-conversation `system`-role reminder messages,
 which OpenAI accepts but Qwen's chat template rejects (`"System message must
-be at the beginning."`). `LITELLM_DEMOTE_MIDTURN_SYSTEM` controls the
-fix: the compose files default to `drop` (remove the reminders entirely,
-which also keeps the conversation prefix stable for vLLM's prefix cache);
-set `true` to instead rewrite them as user turns — the place Claude Code
-historically put them. Upstream preserves mid-turn system rows deliberately
-(PR [#34290](https://github.com/BerriAI/litellm/pull/34290)), so this stays
-opt-in.
+be at the beginning."`). Upstream now converts those rows to user turns
+(prefixed with an operator note) on the `/v1/messages` bridge
+(PR [#41493](https://github.com/BerriAI/litellm/pull/41493)); the fork adds
+`LITELLM_DROP_MIDTURN_SYSTEM=true`, which the compose files set, to remove
+them instead (smaller prompt, stable prefix for vLLM's prefix cache) and to
+cover the OpenAI `/v1/chat/completions` path, which upstream still 400s.
+Unset it to get upstream's conversion.
 
 [vllm-52739]: https://github.com/vllm-project/vllm/pull/52739
 [tf-48071]: https://github.com/huggingface/transformers/pull/48071
