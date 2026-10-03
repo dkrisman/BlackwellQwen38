@@ -220,7 +220,7 @@ The forks exist only to carry these changes until they merge — if any of them
 would help you, a review or a 👍 upstream accelerates that. Once merged, the
 overlay builds collapse back into stock images.
 
-**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-14`, same commit as `bq38-9`):
+**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-15`, same commit as `bq38-9`):
 
 | PR / issue | What it does | Used here |
 |---|---|---|
@@ -231,13 +231,13 @@ overlay builds collapse back into stock images.
 | [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Closed as superseded: per review the knob belongs in the HF processor, now **merged** as transformers [#48071][tf-48071] | superseded |
 | [#54380][vllm-54380] Honor `cap_pixels_per_frame` in Qwen3-VL memory profiling | **Merged** (2026-08-30). Profiling stops underestimating the largest video when the transformers cap is enabled; stock in the `bq38-8` base, fork guard dropped | ✅ `fp8.video` variant |
 
-**transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-14`, same commit as `bq38-9` — the tag now points at the upstream merge commit; the transformers fork carries zero delta):
+**transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-15`, same commit as `bq38-9` — the tag now points at the upstream merge commit; the transformers fork carries zero delta):
 
 | PR | What it does | Used here |
 |---|---|---|
 | [#48071][tf-48071] Opt-in per-frame pixel cap for the Qwen3-VL video processor | **Merged** (2026-08-26). Video token cost scales with clip duration instead of every clip filling the whole budget; a boolean `cap_pixels_per_frame` applying the qwen-vl-utils formula | ✅ `fp8.video` variant |
 
-**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-14`):
+**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-15`):
 
 | PR | What it does | Used here |
 |---|---|---|
@@ -247,7 +247,7 @@ overlay builds collapse back into stock images.
 | [#40965][ll-40965] Keep structured output text.format in Responses API requests | Structured output survives the ChatGPT provider transform | carried (no ChatGPT route in this stack) |
 | [#40969][ll-40969] Opt-in removal of mid-turn system messages | Claude Code's mid-conversation system reminders are dropped instead of delivered as user turns; also fixes the 400 on the OpenAI chat path | ✅ every multi-turn session |
 | [#41050][ll-41050] Forward assistant reasoning history to hosted_vllm (third-party, open) | Opt-in `forward_reasoning_content` + `reasoning_content_field: reasoning` stops dropping prior-turn reasoning, so vLLM's template re-uses it (a think-budget-capped turn is no longer re-derived next turn) | carried; A/B via the `reasonhist` bench variant, off by default |
-| (branch `message_start_real_usage`, not yet filed) Fill streaming `message_start` usage with a prompt token estimate | message_start carried hardcoded zeros (backend usage only exists in the final chunk), so Claude Code's context meter — which reads input accounting from message_start alone — showed ~one turn's output as the whole context; a `token_counter` estimate fills `input_tokens`, exact split still lands in the final message_delta | ✅ every streaming request |
+| (branch `fix_message_start_input_tokens`, not yet filed) Fill streaming `message_start` usage with a prompt token estimate | message_start carried hardcoded zeros (backend usage only exists in the final chunk), so Claude Code's context meter — which reads input accounting from message_start alone — showed ~one turn's output as the whole context; a `token_counter` estimate fills `input_tokens`, exact split still lands in the final message_delta | ✅ every streaming request |
 | (branch `feat_hosted_vllm_count_tokens`, not yet filed) Count tokens for hosted_vllm through vLLM `POST /tokenize` | `/v1/messages/count_tokens` returns what the server renders (277,135 on a 701-message Claude Code request that the local tokenizer counted as 551,616: it counted the prior-turn thinking blocks the chat path strips); Claude Code's compaction bookkeeping stops doubling | ✅ every count_tokens call |
 | [#40968][ll-40968] Report client-requested model in streaming message_start | Streaming responses show the requested `claude-*` alias instead of the internal served-model name | ✅ every streaming request |
 | (branch `litellm_transcription_optional_token_details`, not filed: duplicates upstream [#33766][ll-33766]) Transcription token usage without `input_token_details` | `/v1/audio/transcriptions` against llama-server (llama.cpp) parses and cost-tracks instead of 500ing | carried (no audio route in this stack; used by the llama.cpp Gemma modes) |
