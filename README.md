@@ -220,7 +220,7 @@ The forks exist only to carry these changes until they merge — if any of them
 would help you, a review or a 👍 upstream accelerates that. Once merged, the
 overlay builds collapse back into stock images.
 
-**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-16`, same commit as `bq38-9`):
+**vLLM** ([fork](https://github.com/dkrisman/vllm), tag `bq38-17`, same commit as `bq38-9`):
 
 | PR / issue | What it does | Used here |
 |---|---|---|
@@ -231,13 +231,13 @@ overlay builds collapse back into stock images.
 | [#52754][vllm-52754] Make Qwen3-VL video cost duration-proportional | Closed as superseded: per review the knob belongs in the HF processor, now **merged** as transformers [#48071][tf-48071] | superseded |
 | [#54380][vllm-54380] Honor `cap_pixels_per_frame` in Qwen3-VL memory profiling | **Merged** (2026-08-30). Profiling stops underestimating the largest video when the transformers cap is enabled; stock in the `bq38-8` base, fork guard dropped | ✅ `fp8.video` variant |
 
-**transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-16`, same commit as `bq38-9` — the tag now points at the upstream merge commit; the transformers fork carries zero delta):
+**transformers** ([fork](https://github.com/dkrisman/transformers), tag `bq38-17`, same commit as `bq38-9` — the tag now points at the upstream merge commit; the transformers fork carries zero delta):
 
 | PR | What it does | Used here |
 |---|---|---|
 | [#48071][tf-48071] Opt-in per-frame pixel cap for the Qwen3-VL video processor | **Merged** (2026-08-26). Video token cost scales with clip duration instead of every clip filling the whole budget; a boolean `cap_pixels_per_frame` applying the qwen-vl-utils formula | ✅ `fp8.video` variant |
 
-**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-16`):
+**LiteLLM** ([fork](https://github.com/dkrisman/litellm), tag `bq38-17`):
 
 | PR | What it does | Used here |
 |---|---|---|
